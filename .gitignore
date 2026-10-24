@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+out/cache/
+out/stills/
+out/segments/
+out/audio/
+out/render*.log
+# GitHub refuses files over 100 MB: the full-resolution masters stay out of git
+out/montage_v2.mp4
+out/v1/montage_v1.mp4
+out/v1/mix_v1.wav

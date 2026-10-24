@@ -1,0 +1,492 @@
+{
+  "meta": {
+    "title": "Mateo XXV, 30 — study v2",
+    "output_name": "montage_v2",
+    "width": 1920,
+    "height": 1080,
+    "fps": 24,
+    "seed": 1964,
+    "supersample": 2,
+    "crf": 20,
+    "x264_tune": null,
+    "_encode_note": "Lower crf = bigger, cleaner file (17 is visually lossless). Set x264_tune to \"grain\" to keep the film grain crisper at the cost of a much larger file."
+  },
+
+  "music": {
+    "bpm": 90,
+    "anchor_segment": "stars",
+    "_note": "Cuts in segments with a 'snap' value are quantised to this beat grid, counted from the start of anchor_segment. At 90 bpm: 1/4 = 16 frames, 1/16 = 4 frames, 1/32 = 2 frames."
+  },
+
+  "look": {
+    "bw_tint": [0.955, 0.985, 1.03],
+    "grain": 0.05,
+    "grain_size": 1.7,
+    "vignette": 0.55,
+    "flicker": 0.025,
+    "dust": 0.12
+  },
+
+  "audio": {
+    "sample_rate": 48000,
+    "ceiling_db": -1.0,
+    "silence_from": ["last_line", "start", 1.0],
+    "mute_zone": {"from": "old_food", "to": "sea_sun", "exempt": ["layer_low_hold"]},
+    "train": {
+      "from": "viaduct",
+      "to": "smoke",
+      "gain_db": -1.0,
+      "clack_period_beats": 2,
+      "bogie_gap_beats": 1,
+      "axle_gap": 0.13,
+      "hum_hz": 49.0,
+      "hum_db": -16.0,
+      "rumble_db": -15.0,
+      "squeal_at": 10.8,
+      "squeal_db": -30.0,
+      "whistle_at": 9.6,
+      "whistle_db": -13.0,
+      "pan_from": -0.6,
+      "pan_to": 0.5,
+      "envelope": [["viaduct", "start", 0, 0], ["viaduct", "start", 1.2, 0.45], ["rail_yard", "start", 0, 0.7],
+                   ["rail_yard", "start", 1.5, 1.0], ["rail_yard", "end", 0, 1.0], ["smoke", "end", -2.5, 0.45],
+                   ["smoke", "end", 0, 0]]
+    },
+    "rise": {
+      "segment": "last_judgment",
+      "from_hz": 73.4,
+      "to_hz": 293.7,
+      "gain_db": -9.0
+    },
+    "drone": {
+      "envelope": [["blackout", "start", 0, 0], ["blackout", "start", 0.35, 1.0], ["sound", "end", 0, 1.0],
+                   ["stars", "start", 1.5, 0]],
+      "gain_db": -15.0,
+      "ping_segment": "sound",
+      "ping_db": -30.0
+    },
+    "minimal": {
+      "to": "gallery",
+      "gain_db": -7.0,
+      "voices": {
+        "v1": {"division": 8, "pan": -0.3, "pattern": ["D4", "A4", "F4", "G4", "D4", "A4", "C5", "G4"]},
+        "v2": {"division": 16, "pan": 0.35,
+               "pattern": ["A4", "-", "D5", "-", "C5", "A4", "-", "F5", "-", "D5", "A4", "-", "G4", "-", "E5", "-"]},
+        "v3": {"division": 16, "pan": 0.1, "pattern": ["D5", "F5", "A5", "C6", "A5", "F5", "D5", "A4"]}
+      },
+      "sections": {
+        "stars": {"v1": 0.5},
+        "bread": {"v1": 0.6, "v2": 0.45},
+        "libraries": {"v1": 0.65, "v2": 0.5, "v3": 0.32},
+        "cards": {"v1": 0.45, "every": 2},
+        "chess": {"v1": 0.4, "v2": 0.22, "every": 2},
+        "gallery": {"v1": 0.7, "v2": 0.55, "v3": 0.42}
+      },
+      "pad_envelope": [["cards", "start", 0, 0], ["cards", "start", 0.6, 1.0], ["chess", "end", -0.4, 1.0],
+                       ["chess", "end", 0, 0]],
+      "pad_db": -9.0,
+      "bass_from": "bread",
+      "bass_db": -11.0,
+      "tick_db": -24.0,
+      "heartbeat_db": -16.0
+    },
+    "basement": {
+      "segment": "basement",
+      "room_db": -50.0,
+      "drip_db": -34.0,
+      "drips": [2.4, 4.6]
+    },
+    "quiet": {
+      "envelope": [["body", "start", 0, 0], ["body", "start", 0.8, 1.0], ["shadow", "end", -0.5, 1.0], ["shadow", "end", 0, 0]],
+      "room_db": -40.0,
+      "steps_segment": "body",
+      "steps_db": -26.0
+    },
+    "mirror_music": {
+      "segment": "mirrors",
+      "slide_segment": "music_slide",
+      "gain_db": -7.0,
+      "pad_db": -14.0,
+      "heartbeat_db": -26.0,
+      "voices": {
+        "v1": {"division": 8, "pan": -0.3, "gain": 0.55, "from_shot": 0, "pattern": ["D4", "A4", "F4", "G4", "D4", "A4", "C5", "G4"]},
+        "v2": {"division": 16, "pan": 0.35, "gain": 0.45, "from_shot": 2,
+               "pattern": ["A4", "-", "D5", "-", "C5", "A4", "-", "F5", "-", "D5", "A4", "-", "G4", "-", "E5", "-"]},
+        "v3": {"division": 16, "pan": 0.1, "gain": 0.33, "from_shot": 4, "pattern": ["D5", "F5", "A5", "C6", "A5", "F5", "D5", "A4"]},
+        "v4": {"division": 16, "pan": -0.15, "gain": 0.25, "from_shot": 6, "pattern": ["A5", "D6", "C6", "A5", "G5", "A5", "E5", "F5"]}
+      }
+    },
+    "warm": {
+      "gain_db": -12.0,
+      "chords": {
+        "frontier": ["D3", "A3", "F#4", "E4", "A4"],
+        "bronze_saga": ["B2", "F#3", "D4", "A4"],
+        "algebra_fire": ["G2", "D3", "B3", "F#4"],
+        "charge": ["A2", "E3", "D4", "E4"],
+        "days": ["D3", "A3", "F#4", "C#5"]
+      },
+      "drums_segment": "charge",
+      "drums_db": -8.0
+    },
+    "long_tones": {
+      "gain_db": -11.0,
+      "notes": {
+        "honeysuckle": ["A4", "E5"],
+        "love": [["F#4", 0.0, 0.6], ["D5", 0.0, 0.6], ["F#4", 0.6, 1.0]],
+        "dream_treasure": ["D3", "A3", "F#4"],
+        "chance": [["E5", 0.0, 0.75], ["B5", 0.1, 0.75]]
+      },
+      "dice_segment": "chance",
+      "dice_clicks": 14,
+      "dice_db": -28.0,
+      "pull_segment": "memory",
+      "pull_semitones": 5,
+      "pull_db": -2.0
+    },
+    "flashback": {
+      "segment": "all_given",
+      "gain_db": -12.0
+    },
+    "low_hold": {
+      "segment": "old_food",
+      "gain_db": -24.0
+    },
+    "sacred": {
+      "segment": "sea_sun",
+      "gain_db": -10.0,
+      "notes": [["D4", 0.0], ["A4", 0.6], ["D5", 1.4], ["E5", 2.6], ["A5", 3.8]]
+    },
+    "train_last": {
+      "from": "wasted_years",
+      "to": "last_line",
+      "gain_db": -2.0,
+      "clack_period_beats": 2,
+      "bogie_gap_beats": 1,
+      "axle_gap": 0.13,
+      "hum_hz": 49.0,
+      "hum_db": -16.0,
+      "rumble_db": -15.0,
+      "pan_from": -0.5,
+      "pan_to": 0.6,
+      "envelope": [["wasted_years", "start", 0, 0], ["wasted_years", "start", 0.6, 0.85], ["wasted_years", "end", -1.0, 0.75],
+                   ["last_line", "start", 0.9, 0]]
+    }
+  },
+
+  "segments": [
+    {
+      "name": "viaduct",
+      "title": "高架橋",
+      "duration": 6.0,
+      "look": "bw",
+      "subtitles": [{"text": "[詩句 01]", "start": 1.0, "end": 5.5}],
+      "params": {
+        "drift": 1.0,
+        "fog_distance": 420.0,
+        "fog_level": 0.17,
+        "span": 18.0,
+        "height": 34.0,
+        "shadow": 0.68
+      }
+    },
+    {
+      "name": "rail_yard",
+      "title": "鐵的迷宮",
+      "duration": 8.0,
+      "look": "bw",
+      "subtitles": [{"text": "[詩句 02]", "start": 0.8, "end": 7.4}],
+      "params": {
+        "main_tracks": 8,
+        "sidings": 8,
+        "train_cars": 11,
+        "train_speed": 9.0,
+        "train_track": 3,
+        "switch_x": 0.0,
+        "switch_length": 34.0,
+        "camera_follow": 4.5,
+        "glint": 1.3,
+        "lamp_pool": 1.1
+      }
+    },
+    {
+      "name": "smoke",
+      "title": "黑煙升上夜空",
+      "duration": 6.0,
+      "look": "bw",
+      "subtitles": [{"text": "[詩句 03]", "start": 0.5, "end": 5.5}],
+      "params": {"stars": 900, "particles": 16000, "rise_speed": 0.1, "density": 2.2}
+    },
+    {
+      "name": "last_judgment",
+      "title": "最後審判",
+      "duration": 6.0,
+      "look": "color",
+      "subtitles": [{"text": "[詩句 04]", "start": 1.5, "end": 5.8}],
+      "params": {"color_in_start": 0.15, "color_in_end": 0.7},
+      "palette": {
+        "sky_top": "#141a4a",
+        "sky_mid": "#b8325c",
+        "sky_low": "#ff8a3a",
+        "sun": "#fff2c8",
+        "ground": "#2b1a12"
+      }
+    },
+    {
+      "name": "blackout",
+      "title": "黑屏與疊影",
+      "duration": 4.0,
+      "look": "bw",
+      "params": {"flashes": 6, "flash_length": 0.12, "opacity": 0.5, "sources": ["viaduct", "rail_yard", "smoke", "last_judgment"]}
+    },
+    {
+      "name": "sound",
+      "title": "聲音出現",
+      "duration": 3.0,
+      "look": "bw",
+      "subtitles": [{"text": "[詩句 05]", "start": 0.4, "end": 2.9}],
+      "params": {"rings": 5, "brightness": 0.18}
+    },
+    {
+      "name": "stars",
+      "title": "星星",
+      "shots": 3,
+      "shot_durations": 1.0,
+      "snap": "1/16",
+      "look": "bw",
+      "subtitles": [{"text": "[詩句 06]", "start": 0.0, "end": 3.0}]
+    },
+    {
+      "name": "bread",
+      "title": "麵包",
+      "shots": 5,
+      "shot_durations": 0.6,
+      "snap": "1/32",
+      "look": "color",
+      "subtitles": [{"text": "[詩句 07]", "start": 0.0, "end": 3.0}],
+      "palette": {"crust": "#b5651d", "crumb": "#f3d9a4", "bg": "#1a0f08", "light": "#ffcf80"}
+    },
+    {
+      "name": "libraries",
+      "title": "東方和西方的圖書館",
+      "shots": 10,
+      "shot_durations": {"from": 0.4, "to": 0.1, "curve": "linear"},
+      "snap": "1/32",
+      "look": "color",
+      "subtitles": [{"text": "[詩句 08]", "start": 0.0, "end": 2.5}],
+      "palette": {"east": "#8c2f1e", "west": "#3a4a3a", "paper": "#d8cfb8", "dark": "#0d0b09"}
+    },
+    {
+      "name": "cards",
+      "title": "紙牌",
+      "shots": 3,
+      "shot_durations": [2.0, 2.0, 2.0],
+      "snap": "1/4",
+      "look": "color",
+      "subtitles": [
+        {"text": "[詩句 09]", "start": 0.2, "end": 3.0},
+        {"text": "[詩句 10]", "start": 3.2, "end": 5.9}
+      ],
+      "palette": {"felt": "#0f3b2a", "card": "#efe9dc", "red": "#b3202a", "ink": "#111111"}
+    },
+    {
+      "name": "chess",
+      "title": "棋盤",
+      "duration": 4.0,
+      "snap": "1/4",
+      "look": "color",
+      "subtitles": [{"text": "[詩句 11]", "start": 0.3, "end": 3.8}],
+      "palette": {"light": "#d9d2c0", "dark": "#2a2622", "bg": "#0a0908"}
+    },
+    {
+      "name": "gallery",
+      "title": "畫廊、天窗",
+      "shots": 8,
+      "shot_durations": {"from": 0.6, "to": 0.12, "curve": "ease_in"},
+      "snap": "1/32",
+      "look": "color",
+      "subtitles": [{"text": "[詩句 12]", "start": 0.0, "end": 2.6}],
+      "palette": {"wall": "#e6e1d6", "frame": "#3b2e22", "beam": "#fff6dc", "shadow": "#1c1a18"}
+    },
+    {
+      "name": "basement",
+      "title": "地下室",
+      "duration": 6.0,
+      "look": "color",
+      "subtitles": [{"text": "[詩句 13]", "start": 1.0, "end": 5.5}],
+      "params": {"glow": 0.2, "speed": 0.03}
+    },
+    {
+      "name": "body",
+      "title": "身體",
+      "duration": 4.0,
+      "look": "color",
+      "subtitles": [{"text": "[詩句 14]", "start": 0.4, "end": 3.8}],
+      "params": {"steps_per_second": 0.9, "sheen": 0.35}
+    },
+    {
+      "name": "nail",
+      "title": "指甲",
+      "duration": 4.0,
+      "look": "color",
+      "subtitles": [{"text": "[詩句 15]", "start": 0.3, "end": 3.8}],
+      "params": {"growth": 0.35}
+    },
+    {
+      "name": "shadow",
+      "title": "遺忘的影子",
+      "duration": 4.0,
+      "look": "color",
+      "subtitles": [{"text": "[詩句 16]", "start": 0.3, "end": 3.8}],
+      "params": {"detach_start": 0.25, "fade_end": 0.9}
+    },
+    {
+      "name": "mirrors",
+      "title": "忙於反映的鏡子",
+      "shots": 7,
+      "shot_durations": {"from": 1.4, "to": 0.4, "curve": "exponential"},
+      "duration": 6.0,
+      "snap": "1/32",
+      "look": "color",
+      "subtitles": [{"text": "[詩句 17]", "start": 0.2, "end": 5.6}],
+      "params": {"mirrors_per_shot": [1, 1, 2, 4, 6, 9, 16], "depth": 14, "wobble": 1.0},
+      "palette": {"glass": "#5d6b74", "frame": "#2a2c2e", "light": "#dfe8ee"}
+    },
+    {
+      "name": "music_slide",
+      "title": "音樂的下滑",
+      "duration": 4.0,
+      "look": "color",
+      "subtitles": [{"text": "[詩句 18]", "start": 0.3, "end": 3.6}],
+      "params": {"semitones": 12}
+    },
+    {
+      "name": "frontier",
+      "title": "邊境、馬匹、拂曉",
+      "duration": 6.0,
+      "look": "color",
+      "subtitles": [{"text": "[詩句 19]", "start": 0.6, "end": 5.6}],
+      "params": {"horses": 7},
+      "palette": {"sky_top": "#3b4a7a", "sky_low": "#ffb25c", "sun": "#fff0c8", "land": "#3a2416"}
+    },
+    {
+      "name": "bronze_saga",
+      "title": "青銅砝碼與薩迦",
+      "shots": 2,
+      "shot_durations": [2.0, 2.0],
+      "look": "color",
+      "subtitles": [{"text": "[詩句 20]", "start": 0.2, "end": 3.8}],
+      "palette": {"bronze": "#8c5a2b", "parchment": "#c9b28a", "ink": "#2b1d12", "bg": "#120c08"}
+    },
+    {
+      "name": "algebra_fire",
+      "title": "代數和火焰",
+      "shots": 6,
+      "shot_durations": 0.5,
+      "snap": "1/32",
+      "look": "color",
+      "subtitles": [{"text": "[詩句 21]", "start": 0.0, "end": 3.0}]
+    },
+    {
+      "name": "charge",
+      "title": "血液裡的衝鋒",
+      "shots": 14,
+      "shot_durations": {"from": 0.5, "to": 0.1, "curve": "exponential"},
+      "duration": 4.0,
+      "snap": "1/32",
+      "look": "color",
+      "subtitles": [{"text": "[詩句 22]", "start": 0.0, "end": 4.0}],
+      "params": {"blur": 1.0, "dust": 1.0},
+      "palette": {"dark": "#140304", "mid": "#8e1414", "hot": "#ffb070"}
+    },
+    {
+      "name": "days",
+      "title": "比巴爾扎克人物更多的日子",
+      "duration": 4.0,
+      "look": "color",
+      "subtitles": [{"text": "[詩句 23]", "start": 0.3, "end": 3.8}],
+      "params": {"people": 2600}
+    },
+    {
+      "name": "honeysuckle",
+      "title": "忍冬花",
+      "duration": 3.0,
+      "look": "color",
+      "subtitles": [{"text": "[詩句 24]", "start": 0.2, "end": 2.9}],
+      "palette": {"petal": "#f6e7c1", "throat": "#e8b04a", "leaf": "#4f6b3a", "bg": "#2a2418"}
+    },
+    {
+      "name": "love",
+      "title": "愛與愛的前夜、懷念",
+      "shots": 2,
+      "shot_durations": [3.5, 2.5],
+      "look": "color",
+      "subtitles": [{"text": "[詩句 25]", "start": 0.3, "end": 3.3}, {"text": "[詩句 26]", "start": 3.6, "end": 5.8}]
+    },
+    {
+      "name": "dream_treasure",
+      "title": "夢如埋藏的寶藏",
+      "duration": 4.0,
+      "look": "color",
+      "subtitles": [{"text": "[詩句 27]", "start": 0.3, "end": 3.8}],
+      "params": {"glow": 0.85}
+    },
+    {
+      "name": "chance",
+      "title": "慷慨的機遇",
+      "duration": 3.0,
+      "look": "color",
+      "subtitles": [{"text": "[詩句 28]", "start": 0.2, "end": 2.9}],
+      "params": {"freeze_at": 2.3}
+    },
+    {
+      "name": "memory",
+      "title": "令人目眩的回憶",
+      "duration": 5.0,
+      "look": "color",
+      "subtitles": [{"text": "[詩句 29]", "start": 0.3, "end": 4.8}],
+      "params": {"distance_from": 4.0, "distance_to": 20.0, "fov_from": 82.0},
+      "palette": {"sky": "#f0b27a", "floor_a": "#d8c3a0", "floor_b": "#5a3f33", "column": "#7a4a3c", "figure": "#1a1012"}
+    },
+    {
+      "name": "all_given",
+      "title": "這一切都給了你",
+      "shots": 28,
+      "shot_durations": 0.107,
+      "look": "color",
+      "subtitles": [{"text": "[詩句 30]", "start": 0.0, "end": 3.0}]
+    },
+    {
+      "name": "old_food",
+      "title": "英雄的古老食糧",
+      "shots": 3,
+      "shot_durations": [3.0, 3.0, 3.0],
+      "look": "bw",
+      "subtitles": [{"text": "[詩句 31]", "start": 0.4, "end": 2.8}, {"text": "[詩句 32]", "start": 3.2, "end": 5.8},
+                    {"text": "[詩句 33]", "start": 6.2, "end": 8.8}]
+    },
+    {
+      "name": "sea_sun",
+      "title": "海洋與太陽",
+      "duration": 8.0,
+      "look": "color",
+      "subtitles": [{"text": "[詩句 34]", "start": 1.0, "end": 7.5}],
+      "palette": {"sky_top": "#1f5fa8", "sky_low": "#9fcbe8", "sea": "#0b4a78", "sun": "#fffbe8"},
+      "look_override": {"grain": 0.03, "dust": 0.05}
+    },
+    {
+      "name": "wasted_years",
+      "title": "消磨了歲月",
+      "duration": 6.0,
+      "look": "bw",
+      "subtitles": [{"text": "[詩句 35]", "start": 0.6, "end": 5.6}]
+    },
+    {
+      "name": "last_line",
+      "title": "最後一句",
+      "duration": 3.0,
+      "look": "bw",
+      "subtitles": [{"text": "[詩句 36]", "start": 0.0, "end": 2.6}],
+      "look_override": {"dust": 0.0, "flicker": 0.0, "grain": 0.0}
+    }
+  ]
+}
