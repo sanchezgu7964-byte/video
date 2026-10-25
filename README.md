@@ -19,6 +19,8 @@ timeline.json              ← the edit: durations, shot counts, pacing, colours
 render_segment.py          ← render / preview a single segment
 render_full.py             ← render the whole film
 make_subtitles.py          ← timeline.json → subtitles.srt
+make_storyboard.py         ← timeline.json → STORYBOARD.md (timeline + shot-by-shot storyboard, in Chinese)
+STORYBOARD.md              ← 時間線與分鏡（文字版）
 subtitles.srt              ← placeholder subtitles ([詩句 01] …)
 montage/
   timeline.py              ← shot-duration curves, beat snapping, frame rounding
