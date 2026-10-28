@@ -456,6 +456,90 @@ def build(tl):
     return dry, wet, field, end
 
 
+def insert_sound(name, dur, shot, tl, rng):
+    """每個意象自己的聲音（意象鏡頭切進來時，主聲軌壓低，這個聲音浮上來）。"""
+    n = max(int(dur * SR), 64)
+    t = np.arange(n) / SR
+    out = np.zeros(n, np.float32)
+    kw = shot.kw
+    if name == "iron_house":
+        out += tone([55.0, 83.2, 131.0, 197.5], dur, [1, 0.6, 0.4, 0.25], detune=0.004, rng=rng) * 0.18
+        out += filt(white(rng, n), "bandpass", [200, 900]) * 0.03
+        if shot.p[1] > 0.8:
+            k = int(max(0.0, (0.85 - shot.p[0]) / max(shot.p[1] - shot.p[0], 1e-3)) * n)
+            cr = crackle(rng, dur, 900, 400, 8000, 1.0) * env_ad(n, 0.001, 0.15)
+            out[k:] += cr[: n - k] * 0.8
+    elif name == "mouth":
+        out += sweep_filter(white(rng, n), "lowpass", np.geomspace(600, 3500, n)) * np.linspace(0.02, 0.18, n)
+    elif name == "candle":
+        out += filt(white(rng, n), "lowpass", 500) * (0.5 + 0.5 * np.sin(2 * np.pi * 9 * t)) * 0.08
+        k = int(n * 0.55)
+        out[k:] += filt(white(rng, n - k), "bandpass", [300, 1500]) * env_ad(n - k, 0.005, 0.08) * 0.3
+    elif name == "grass_crack":
+        out += crackle(rng, dur, 70, 1500, 9000, 0.35)
+        for k in range(int(dur * 6) + 1):
+            kk = knock(rng, rng.uniform(250, 600), 0.15, 0.3) * 0.25
+            i0 = int(rng.uniform(0, max(n - len(kk), 1)))
+            out[i0:i0 + len(kk)] += kk[: n - i0]
+    elif name == "roots_bones":
+        out += filt(brown(rng, n), "lowpass", 300) * (0.6 + 0.4 * np.sin(2 * np.pi * 3 * t)) * 0.8
+        out[: min(n, int(0.35 * SR))] += thud(rng, 48, 38, 0.35, 0.8, 0.0)[: min(n, int(0.35 * SR))] * 0.6
+    elif name == "boots":
+        th = thud(rng, 70, 40, 0.5, 1.4, 1.6)
+        i0 = max(0, n - int(0.04 * SR))   # 落地在剪回來的那一刻附近
+        i0 = min(i0, n - 1)
+        out[i0:] += th[: n - i0]
+        out += filt(white(rng, n), "bandpass", [800, 4000]) * env_ad(n, 0.001, 0.05) * 0.2
+    elif name == "onlookers":
+        mur = sum(filt(white(rng, n), "bandpass", [f * 0.85, f * 1.15]) * (0.5 + 0.5 * np.sin(2 * np.pi * rng.uniform(2, 5) * t + rng.uniform(0, 6)))
+                  for f in (320, 520, 760))
+        out += mur * 0.12
+    elif name == "crowd":
+        v = kw.get("variant", "surge")
+        if v == "empty":
+            out += sweep_filter(pink(rng, n), "lowpass", 300 + 400 * np.sin(np.linspace(0, 3, n)) ** 2) * 0.1
+        else:
+            syl = 4.5 if v == "surge" else 0.0
+            roar = sum(filt(pink(rng, n), "bandpass", [f * 0.7, f * 1.3]) for f in (420, 900, 1800))
+            am = 0.6 + 0.4 * np.sin(2 * np.pi * syl * t) if syl else 0.25
+            out += roar * am * (1.8 if v == "surge" else 0.8)
+            # 口號：落在拍上的齊聲吶喊（方陣是機械的整齊；人潮是參差的）
+            for b in tl.beats_between(shot.t0 - 0.3, shot.t1):
+                i0 = int((b - shot.t0) * SR)
+                for j in range(1 if v == "formation" else 3):
+                    jit = 0 if v == "formation" else int(rng.uniform(-0.04, 0.04) * SR)
+                    ch = filt(white(rng, int(0.22 * SR)), "bandpass", [500, 1600]) * env_ad(int(0.22 * SR), 0.01, 0.07)
+                    k0 = i0 + jit
+                    if 0 <= k0 < n:
+                        out[k0:k0 + len(ch)] += ch[: n - k0] * (3.2 if v == "formation" else 1.8)
+                if v == "formation" and 0 <= i0 < n:
+                    dr = thud(rng, 90, 60, 0.25, 1.0, 0.4)
+                    out[i0:i0 + len(dr)] += dr[: n - i0] * 1.3
+    elif name == "gate" and shot.p[1] <= 0.05:
+        out += bell(rng, 65.4, max(dur, 0.5))[:n] * 0.3     # 還立著的牌坊：一聲低沉的鐘
+    elif name == "gate":
+        out += filt(brown(rng, n), "lowpass", 180) * 1.6 * np.clip(t / max(dur, 1e-3) * 2, 0, 1)
+        out += crackle(rng, dur, 120, 200, 4000, 0.7)
+        if shot.p[0] < 0.6 < shot.p[1] or shot.p[0] > 0.6:
+            th = thud(rng, 60, 24, min(dur, 2.0), 1.6, 1.4)
+            out[: len(th)] += th[:n]
+    elif name == "calendar":
+        out += swish(rng, dur, 2000, 7000, 0.5) * 0.5
+        out += crackle(rng, dur, 400, 2500, 9000, 0.25)
+    elif name == "bars":
+        out += np.sin(2 * np.pi * 6200 * t).astype(np.float32) * 0.004
+    elif name == "lamp_window":
+        for k in range(int(dur * 3) + 1):
+            c0 = int(rng.uniform(0, n))
+            chirp = (np.sin(2 * np.pi * 4600 * np.arange(int(0.12 * SR)) / SR) * (np.sin(2 * np.pi * 30 * np.arange(int(0.12 * SR)) / SR) > 0)).astype(np.float32)
+            out[c0:c0 + len(chirp)] += chirp[: n - c0] * 0.02
+        out += crackle(rng, dur, 30, 3000, 9000, 0.08)
+    f = min(int(0.004 * SR), n // 2)
+    out[:f] *= np.linspace(0, 1, f)
+    out[-f:] *= np.linspace(1, 0, f)
+    return out
+
+
 def apply_edit(mix, edit, rng):
     """聲音跟著剪輯：閃回帶著原處的聲音、蒙太奇的剪接點有一聲切音、黑畫面的靜音。"""
     src = mix.copy()
@@ -472,6 +556,21 @@ def apply_edit(mix, edit, rng):
             g[-fade:] = np.linspace(1, 0, fade)
             k = 0.5 if s.overlay else 1.0
             mix[i0:i0 + L] = mix[i0:i0 + L] * (1 - 0.6 * k * g[:, None]) + src[j0:j0 + L] * (k * g[:, None])
+        if s.kind == "insert":
+            # 切到另一個世界：主聲軌壓低，意象自己的聲音浮上來
+            L = min(i1, n) - i0
+            if L > 0:
+                deep = {"bars": 0.12, "lamp_window": 0.3, "iron_house": 0.35, "mouth": 0.4}
+                if s.insert == "crowd" and s.kw.get("variant") == "empty":
+                    deep_k = 0.1
+                else:
+                    deep_k = deep.get(s.insert, 0.5)
+                duck = deep_k if (s.t1 - s.t0) > 0.15 else 0.5 + 0.5 * deep_k
+                g = np.full(L, duck, np.float32)
+                g[:fade] = np.linspace(1, duck, min(fade, L))[: min(fade, L)] if L > fade else duck
+                mix[i0:i0 + L] *= g[:, None]
+                sig = insert_sound(s.insert, s.t1 - s.t0, s, edit.tl, rng)[:L]
+                mix[i0:i0 + len(sig)] += sig[:, None]
         if s.tick:
             cl = knock(rng, 3400, 0.025, 0.15) * 0.22
             cl[: int(0.012 * SR)] += filt(white(rng, int(0.012 * SR)), "highpass", 6000) * 0.05

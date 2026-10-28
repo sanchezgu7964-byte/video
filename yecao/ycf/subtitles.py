@@ -97,9 +97,10 @@ class Subtitles:
     def visible(self, t):
         return [ln for ln in self.lines if ln["at"] - 0.01 <= t < ln["until"] + ln["fade_out"] + 0.01]
 
-    def draw(self, layer, t: float, alpha: float = 1.0, color=None):
+    def draw(self, layer, t: float, alpha: float = 1.0, color=None, halo=None):
         ctx = layer.ctx
         col = self.color if color is None else color
+        halo = (0.02, 0.02, 0.02) if halo is None else halo
         k = int(t // self.tr_every)
         tr_on = (t - k * self.tr_every) < self.tr_dur and k > 0
         for ln in self.visible(t):
@@ -143,7 +144,7 @@ class Subtitles:
                     ctx.new_path()
                     path_polys(ctx, polys)
                 # 柔和暗邊增加可讀性
-                ctx.set_source_rgba(0.02, 0.02, 0.02, 0.28 * a)
+                ctx.set_source_rgba(*halo, 0.28 * a)
                 ctx.set_line_width(3.0)
                 ctx.set_line_join(cairo.LINE_JOIN_ROUND)
                 ctx.stroke_preserve()

@@ -181,6 +181,34 @@ class EndScene:
         """被釋放後的位移（閉式）：越吹越快。"""
         return -(70 * tau + 300 * tau * tau)
 
+    def _draw_sprout(self, ctx, t):
+        """最後無聲的土色裡，地上冒出一株芽。"""
+        g = ease(ramp(t, self.c("silence") - 0.8, self.tl.duration - 0.4))
+        if g <= 0:
+            return
+        col = self.tl.pal["earth"] * 0.42
+        x0, y0 = 960, 790
+        h = 120 * g
+        sway = 0.04 * np.sin(t * 1.3)
+        u = np.linspace(0, 1, 16)
+        sx = x0 + np.sin(sway) * h * u + 6 * u * u
+        sy = y0 - h * u
+        w = 4.5 * (1 - 0.5 * u)
+        stem = np.concatenate([np.stack([sx - w, sy], 1), np.stack([sx + w, sy], 1)[::-1]])
+        fill_polys(ctx, [stem], col, 1.0)
+        open_k = ease(ramp(g, 0.45, 1.0))
+        tip = np.array([sx[-1], sy[-1]])
+        for side in (-1, 1):
+            ang = -np.pi / 2 + side * (0.25 + 0.9 * open_k)
+            L = 58 * (0.3 + 0.7 * open_k)
+            v = np.linspace(0, 1, 14)
+            cx = tip[0] + np.cos(ang) * L * v
+            cy = tip[1] + np.sin(ang) * L * v - 10 * np.sin(np.pi * v) * open_k
+            ww = 15 * np.sin(np.pi * v) * (0.4 + 0.6 * open_k)
+            nx, ny = -np.sin(ang), np.cos(ang)
+            leaf = np.concatenate([np.stack([cx + nx * ww, cy + ny * ww], 1), np.stack([cx - nx * ww, cy - ny * ww], 1)[::-1]])
+            fill_polys(ctx, [leaf], col, 1.0)
+
     def survivor_pos(self, t):
         """最後那個字的中心（全景座標），給跟拍的鏡頭用。"""
         c = self.c
@@ -276,6 +304,7 @@ class EndScene:
             self._draw_cycle(ctx, t)
         elif t >= c("farewell"):
             self._draw_farewell(ctx, t)
+            self._draw_sprout(ctx, t)
         # 被大地收下：溫暖的土色由下往上沉積
         e = ease(ramp(t, c("earth"), c("silence") - 0.3))
         if e > 0:

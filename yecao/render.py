@@ -38,6 +38,7 @@ class Film:
         self.sub_layer = Layer(self.tl.W, self.tl.H)
         self.scenes = {}
         self.edit = Edit(self.tl) if use_edit else None
+        self._inserts = None
         self._recall = {}
         y = np.arange(self.tl.H, dtype=np.float32)
         b = self.tl.raw["subtitle"]["baseline"] - 14
@@ -74,6 +75,17 @@ class Film:
             return blank
         if shot.kind == "white":
             return blank + np.array([0.93, 0.9, 0.84], np.float32)
+        if shot.kind == "insert":
+            if self._inserts is None:
+                from ycf.inserts import Inserts
+                self._inserts = Inserts(self.tl.seed)
+            kw = dict(shot.kw)
+            if kw.get("beat") == "sync":
+                kw["beat"] = self.tl.beat_phase(t)[1]
+            if "step" in kw and kw["step"] is None:
+                # 靴子落地的那一下對齊剪接點的拍
+                kw["step"] = 0.5 + (t - shot.t1) / (2 * self.tl.period)
+            return self._inserts.render(shot.insert, shot.insert_p(t), t, f, **kw)
         if shot.kind == "flash":
             rec = self.recall(shot.src)
             if shot.overlay:
@@ -91,12 +103,17 @@ class Film:
         sc = self.scene_for(t)
         shot = self.edit.at(t) if self.edit is not None else None
         k = sc.subtitle_backing(t) if sc is not None and hasattr(sc, "subtitle_backing") else 0.0
-        if shot is not None and shot.kind in ("black", "white", "flash") and not shot.overlay:
+        if shot is not None and shot.kind in ("black", "white", "flash", "insert") and not shot.overlay:
             k = 0.0
         if k > 0:
             img *= 1 - 0.75 * k * self.backing
         self.sub_layer.clear()
-        self.subs.draw(self.sub_layer, t)
+        # 在亮的畫面（木刻的紙、土色）上，字幕改用墨色
+        band = img[900:1040:4, 300:1620:4].mean()
+        if band > 0.45:
+            self.subs.draw(self.sub_layer, t, color=np.array([0.06, 0.05, 0.045]), halo=(0.9, 0.86, 0.78))
+        else:
+            self.subs.draw(self.sub_layer, t)
         over(img, self.sub_layer.rgba())
         return self.fin(img, f)
 

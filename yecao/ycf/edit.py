@@ -34,6 +34,13 @@ class Shot:
     label: str = ""
     t1: float = 0.0
     follow: str | None = None
+    insert: str | None = None
+    p: tuple = (0.0, 1.0)
+    kw: dict = field(default_factory=dict)
+
+    def insert_p(self, t):
+        u = (t - self.t0) / max(self.t1 - self.t0, 1e-6)
+        return self.p[0] + (self.p[1] - self.p[0]) * u
 
     def view_at(self, t):
         if self.to is None:
@@ -80,11 +87,16 @@ class Edit:
 
     # ── 讀取 ──
     def _shot(self, d):
-        return Shot(t0=float(d["at"]), kind=d.get("kind", "scene"), view=tuple(d.get("view", WIDE)),
-                    to=tuple(d["to"]) if "to" in d else None, src=int(d.get("src", 0)),
-                    alpha=float(d.get("alpha", 1.0)), overlay=bool(d.get("overlay", False)),
-                    mute=bool(d.get("mute", False)), tick=bool(d.get("tick", False)),
-                    label=d.get("label", ""), follow=d.get("follow"))
+        known = {"at", "kind", "view", "to", "src", "alpha", "overlay", "mute", "tick", "label", "follow", "insert", "p"}
+        p = d.get("p", (0.0, 1.0))
+        if isinstance(p, (int, float)):
+            p = (p, p)
+        return Shot(t0=float(d["at"]), kind=d.get("kind", "insert" if "insert" in d else "scene"),
+                    view=tuple(d.get("view", WIDE)), to=tuple(d["to"]) if "to" in d else None,
+                    src=int(d.get("src", 0)), alpha=float(d.get("alpha", 1.0)), overlay=bool(d.get("overlay", False)),
+                    mute=bool(d.get("mute", False)), tick=bool(d.get("tick", "insert" in d)),
+                    label=d.get("label", ""), follow=d.get("follow"), insert=d.get("insert"), p=tuple(p),
+                    kw={k: v for k, v in d.items() if k not in known})
 
     def at(self, t):
         i = int(np.searchsorted(self.starts, t + 1e-6, side="right")) - 1
@@ -133,8 +145,27 @@ class Edit:
         out = [Shot(t0=b["start"], view=WIDE, label="田野")]
         rng = rand(self.tl.seed, 50, 1)
         evs = [e for e in f.events if b["start"] <= e["t"] < b["end"]]
+        n_st = n_bl = 0
         for e in evs:
             dense = e["t"] >= self.tl.c("stomp_halfbeat")
+            if e["kind"] == "stomp":
+                n_st += 1
+            else:
+                n_bl += 1
+            # 每隔一下：踐踏切到行進的靴子，刪刈切到看客
+            if e["kind"] == "stomp" and n_st % 2 == 0:
+                d = 0.12 if dense else 0.3
+                out.append(Shot(t0=e["t"] - d, kind="insert", insert="boots", p=(0.4, 0.5), tick=True,
+                                kw={"step": None}, label="靴子"))
+                out.append(Shot(t0=e["t"] + (1 / 30 if dense else 0.05), view=(2.4, e["xc"], 700), label="被踩扁的字"))
+                out.append(Shot(t0=e["t"] + (0.25 if dense else 0.4), view=WIDE, label="田野"))
+                continue
+            if e["kind"] == "blade" and n_bl % 2 == 0:
+                d = 0.1 if dense else 0.25
+                out.append(Shot(t0=e["t"] + 0.12, kind="insert", insert="onlookers", p=(0.5, 0.6 + 0.1 * dense),
+                                tick=True, label="看客"))
+                out.append(Shot(t0=e["t"] + 0.12 + d, view=WIDE, label="田野"))
+                continue
             if e["kind"] == "stomp":
                 z = 3.0 if dense else 2.2
                 out.append(Shot(t0=e["t"] - 0.07, view=(z, e["xc"], 690), tick=True, label="印版壓下"))
@@ -161,6 +192,10 @@ class Edit:
         rng = rand(self.tl.seed, 51, 1)
         for i, t in enumerate(beats):
             s, hz = f.camera(t)
+            if i % 3 == 2:
+                out.append(Shot(t0=t, kind="insert", insert="crowd", kw={"variant": "formation", "beat": "sync"},
+                                tick=True, label="方陣：一模一樣的旗"))
+                continue
             if i % 2 == 0:
                 cx, cy = rng.uniform(250, 1670), rng.choice([rng.uniform(120, 380), rng.uniform(760, 960)])
                 out.append(Shot(t0=t, view=(3.0, cx, cy), tick=True, label="口號網格"))
@@ -208,6 +243,11 @@ class Edit:
             if t >= tail:
                 break
             out.append(Shot(t0=t, view=views[k % len(views)], tick=True, label="生長、腐爛、重生"))
+            if k >= 1:
+                cal = min(d * 0.35, 0.45)
+                out.append(Shot(t0=t + d * 0.62, kind="insert", insert="calendar", p=(0.0, 1.0), tick=True,
+                                kw={"year": (k - 1) % 6}, label="撕下一頁日曆"))
+                out.append(Shot(t0=t + d * 0.62 + cal, view=views[(k + 1) % len(views)], label="生長、腐爛、重生"))
             if d < 1.3 and r < n_recall:
                 out.append(Shot(t0=t + min(d * 0.5, 0.2), kind="flash", src=r, tick=False, label="閃回"))
                 out.append(Shot(t0=t + min(d * 0.5, 0.2) + 2 / 30, view=views[(k + 2) % len(views)], label="生長、腐爛、重生"))
@@ -215,8 +255,18 @@ class Edit:
         # 最後兩秒：一格一張，把前面全部的畫面過一遍
         t = tail
         fr = 1 / 30
+        images = [("iron_house", 0.9, {}), ("mouth", 1.0, {}), ("candle", 0.4, {}), ("grass_crack", 0.8, {}),
+                  ("roots_bones", 0.9, {}), ("boots", 0.5, {}), ("onlookers", 0.8, {}),
+                  ("crowd", 0.5, {"variant": "formation"}), ("crowd", 0.5, {"variant": "surge"}), ("gate", 0.6, {}),
+                  ("crowd", 0.5, {"variant": "empty"}), ("bars", 0.5, {})]
+        m = 0
         while t < b["end"] - 1e-3:
-            out.append(Shot(t0=t, kind="flash", src=r % n_recall, label="這一切"))
+            if r % 3 == 2 and m < len(images):
+                name, pp, kw = images[m]
+                out.append(Shot(t0=t, kind="insert", insert=name, p=(pp, pp), kw=kw, label="這一切"))
+                m += 1
+            else:
+                out.append(Shot(t0=t, kind="flash", src=r % n_recall, label="這一切"))
             t += fr * (3 if r % 2 == 0 else 2)
             r += 1
         return out
