@@ -4,7 +4,7 @@ import numpy as np
 
 from . import clump as clumpmod
 from . import fonts
-from .gfx import Layer, ease, ease_in, ease_out, fill_polys, lin_gradient_v, mix, over, ramp
+from .gfx import IDENTITY, Layer, ease, ease_in, ease_out, fill_polys, lin_gradient_v, mix, over, ramp
 from .noise import noise3, rand
 
 BG = np.array([0.05, 0.045, 0.04], np.float32)
@@ -181,6 +181,18 @@ class EndScene:
         """被釋放後的位移（閉式）：越吹越快。"""
         return -(70 * tau + 300 * tau * tau)
 
+    def survivor_pos(self, t):
+        """最後那個字的中心（全景座標），給跟拍的鏡頭用。"""
+        c = self.c
+        p = self.clump[self.survivor]
+        tau = t - self.c_rel[self.survivor]
+        lift = ease(ramp(t, c("colophon") - 2.5, c("colophon") + 0.5))
+        bob = 14 * np.sin((t - c("colophon")) * 1.4)
+        off = np.array([-60 * lift, -150 * lift + bob * lift])
+        if tau > 0:
+            off = off + (self._wind(tau) * 0.8, -40 * tau)
+        return np.array([p.x, clumpmod.BASE[1] - p.h / 2]) + off
+
     def _draw_farewell(self, ctx, t):
         c = self.c
         pal = self.tl.pal
@@ -245,7 +257,7 @@ class EndScene:
         ctx.mask_surface(self.sprites[ch], 0, 0)
         ctx.restore()
 
-    def render(self, frame):
+    def render(self, frame, view=IDENTITY):
         t = frame / self.fps
         c = self.c
         pal = self.tl.pal
@@ -253,6 +265,7 @@ class EndScene:
         lay = self.layer
         lay.clear()
         ctx = lay.ctx
+        view.apply(ctx)
         if t < c("stop"):
             gl = ease(ramp(t, c("cycle"), c("cycle") + 0.6))
             ctx.move_to(0, clumpmod.BASE[1] + 0.5)
@@ -267,7 +280,7 @@ class EndScene:
         e = ease(ramp(t, c("earth"), c("silence") - 0.3))
         if e > 0:
             edge = self.H * (1 - e * 1.25) + 0.0
-            ys = np.arange(self.H, dtype=np.float32)
+            ys = view.src(0, np.arange(self.H, dtype=np.float32))[1]
             m = np.clip((ys - edge) / 260 + 0.5, 0, 1)[:, None, None]
             img = mix(img, np.broadcast_to(pal["earth"], img.shape), m).astype(np.float32)
         over(img, lay.rgba())

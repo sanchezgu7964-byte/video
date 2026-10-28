@@ -163,3 +163,53 @@ def ramp(t, t0, t1):
 
 def mix(a, b, k):
     return a + (b - a) * k
+
+
+class View:
+    """虛擬攝影機：把場景（1920×1080 的「全景」座標）中的 (cx, cy) 放到畫面中心，放大 z 倍。
+    向量圖層用 cairo 矩陣（apply）、點用座標變換（pts），平滑的點陣圖層用裁切放大（raster），
+    所以特寫時字與線條仍然銳利。"""
+
+    def __init__(self, z=1.0, cx=960.0, cy=540.0, W=1920, H=1080):
+        self.z, self.cx, self.cy, self.W, self.H = float(z), float(cx), float(cy), W, H
+
+    @property
+    def identity(self):
+        return abs(self.z - 1) < 1e-6 and abs(self.cx - self.W / 2) < 1e-6 and abs(self.cy - self.H / 2) < 1e-6
+
+    def pts(self, p):
+        p = np.asarray(p, np.float32)
+        return (p - (self.cx, self.cy)) * self.z + (self.W / 2, self.H / 2)
+
+    def src(self, x, y):
+        """畫面座標 → 場景座標。"""
+        return (x - self.W / 2) / self.z + self.cx, (y - self.H / 2) / self.z + self.cy
+
+    def apply(self, ctx):
+        ctx.identity_matrix()
+        if self.identity:
+            return
+        ctx.translate(self.W / 2, self.H / 2)
+        ctx.scale(self.z, self.z)
+        ctx.translate(-self.cx, -self.cy)
+
+    def raster(self, img):
+        """裁切放大（以浮點裁切框取樣，慢推、慢搖時不會跳動）。"""
+        if self.identity:
+            return img
+        H, W = img.shape[:2]
+        x0, y0 = self.src(0, 0)
+        x1, y1 = self.src(W, H)
+        chans = img[..., None] if img.ndim == 2 else img
+        pad = int(np.ceil(max(0, -x0, -y0, x1 - W, y1 - H))) + 1
+        if pad > 1:
+            chans = np.pad(chans, ((pad, pad), (pad, pad), (0, 0)), mode="edge")
+            x0, y0, x1, y1 = x0 + pad, y0 + pad, x1 + pad, y1 + pad
+        box = (x0, y0, x1, y1)
+        out = [np.asarray(Image.fromarray(np.ascontiguousarray(chans[..., c], np.float32), "F")
+                          .resize((W, H), Image.BILINEAR, box=box)) for c in range(chans.shape[2])]
+        out = np.stack(out, -1)
+        return out[..., 0] if img.ndim == 2 else out
+
+
+IDENTITY = View()

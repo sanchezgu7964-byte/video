@@ -453,18 +453,49 @@ def build(tl):
     hum = tone([55.0, 82.4, 110.0], c("silence") - c("earth"), [1, 0.4, 0.2], detune=0.002, rng=rng)
     both(hum * curve([(0, 0), (2.5, 0.25), (c("silence") - c("earth") - 2.5, 0.2), (c("silence") - c("earth"), 0)], en),
          c("earth"), 1.0, 0.0, 0.5)
-    return dry, wet
+    return dry, wet, field, end
+
+
+def apply_edit(mix, edit, rng):
+    """聲音跟著剪輯：閃回帶著原處的聲音、蒙太奇的剪接點有一聲切音、黑畫面的靜音。"""
+    src = mix.copy()
+    n = len(mix)
+    fade = int(0.004 * SR)
+    for s in edit.shots:
+        i0, i1 = int(s.t0 * SR), int(s.t1 * SR)
+        if s.kind == "flash":
+            # 那一刻的聲音碎片，疊進現在
+            j0 = int(edit.recall[s.src] * SR)
+            L = min(i1 - i0 + fade, n - j0, n - i0)
+            g = np.ones(L, np.float32)
+            g[:fade] = np.linspace(0, 1, fade)
+            g[-fade:] = np.linspace(1, 0, fade)
+            k = 0.5 if s.overlay else 1.0
+            mix[i0:i0 + L] = mix[i0:i0 + L] * (1 - 0.6 * k * g[:, None]) + src[j0:j0 + L] * (k * g[:, None])
+        if s.tick:
+            cl = knock(rng, 3400, 0.025, 0.15) * 0.22 + filt(white(rng, int(0.012 * SR)), "highpass", 6000) * 0.05
+            mix[i0:i0 + len(cl)] += cl[: n - i0, None]
+    gate = np.ones(n, np.float32)
+    for s in edit.shots:
+        if s.mute:
+            i0, i1 = int(s.t0 * SR), min(int(s.t1 * SR), n)
+            gate[i0:i1] = 0
+            gate[max(i0 - fade, 0):i0] = np.linspace(1, 0, i0 - max(i0 - fade, 0))
+    return mix * gate[:, None]
 
 
 def write(tl, path):
     import wave
-    dry, wet = build(tl)
+    from .edit import Edit
+    dry, wet, field, end = build(tl)
+    edit = Edit(tl, field, end)
     rng = rand(tl.seed, 99, 2)
     ir = reverb_ir(rng, tl.raw["sound"]["reverb_seconds"])
     W = wet.stereo()
     rev = np.stack([oaconvolve(W[:, 0], ir[:, 0])[: len(W)], oaconvolve(W[:, 1], ir[:, 1])[: len(W)]], 1)
     mix = dry.stereo() + rev * 0.9
     c = tl.c
+    mix = apply_edit(mix, edit, rng)
     # 3:01 驟停：連殘響也一起切掉，真正的寂靜；去罷時再回來
     t = np.arange(len(mix)) / SR
     gate = np.interp(t, [c("stop"), c("stop") + 0.004, c("farewell"), c("farewell") + 0.5,

@@ -11,7 +11,7 @@ from . import atmos
 from . import clump as clumpmod
 from . import fonts
 from . import tree as treemod
-from .gfx import (Layer, bloom, ease, ease_in, ease_out, fill_polys, fill_polys_grad, lin_gradient_v, mix, over,
+from .gfx import (IDENTITY, Layer, bloom, ease, ease_in, ease_out, fill_polys, fill_polys_grad, lin_gradient_v, mix, over,
                   path_polys,
                   ramp, resize, splat)
 from .noise import fbm, noise3, rand
@@ -147,6 +147,7 @@ class FieldScene:
         self.layer = Layer(self.W, self.H)
         self.glow = Layer(self.W, self.H)
         self.far = Layer(self.W, self.H)
+        self.view = IDENTITY
         self.sky = atmos.Sky(self.seed, self.W, self.H)
         self.soil = atmos.Soil(tl)
         self.motes = atmos.Motes(self.seed, self.W, self.H)
@@ -349,13 +350,14 @@ class FieldScene:
         out_k = ease(ramp(t, c("cycle") - 0.7, c("cycle")))
         if not hasattr(self, "_xx"):
             self._yy, self._xx = np.mgrid[0:self.H, 0:self.W].astype(np.float32)
-        d = (self._xx - cx) * nvec[0] + (self._yy - cy) * nvec[1]
-        side = np.clip(d / 1.2 + 0.5, 0, 1)[..., None]
+        sx_, sy_ = self.view.src(self._xx, self._yy)
+        d = (sx_ - cx) * nvec[0] + (sy_ - cy) * nvec[1]
+        side = np.clip(d * self.view.z / 1.2 + 0.5, 0, 1)[..., None]
         light = np.array([0.44, 0.39, 0.31], np.float32)
         dark = np.array([0.055, 0.065, 0.085], np.float32)
         split = light * side + dark * (1 - side)
         # 同一道光：以叢為中心的暖光同時照到兩側
-        r2 = ((self._xx - cx) ** 2 + (self._yy - cy + 60) ** 2) / (520 ** 2)
+        r2 = ((sx_ - cx) ** 2 + (sy_ - cy + 60) ** 2) / (520 ** 2)
         split = split + (np.exp(-r2) * 0.12)[..., None] * pal["light_warm"]
         k = cut * (1 - out_k)
         end_bg = np.array([0.05, 0.045, 0.04], np.float32)
@@ -363,6 +365,7 @@ class FieldScene:
         lay = self.layer
         lay.clear()
         ctx = lay.ctx
+        self.view.apply(ctx)
         # 分界線本身
         if k > 0:
             L = 2400 * cut
@@ -457,7 +460,7 @@ class FieldScene:
             pos = d["p0"] + d["v"] * e + np.array([0, 420]) * u * u / 2
             pos[:, 1] = np.minimum(pos[:, 1], 0)
             a = np.clip(1 - u / d["life"], 0, 1) * d["w"]
-            sc = self.to_screen(pos, t)
+            sc = self.view.pts(self.to_screen(pos, t))
             buf = np.zeros_like(img)
             splat(buf, sc, np.array([0.5, 0.42, 0.33], np.float32), a * 0.9)
             img += buf + bloom(buf, 9, down=4) * 2.5
@@ -1224,7 +1227,15 @@ class FieldScene:
             w[n:] *= fade_rest
             col = np.broadcast_to(col, (len(pos), 3)).copy()
             col[:n] = mix(col[:n], self.tl.pal["light_warm"], g * 0.6)
-        splat(img, pos, col, w)
+        pos = self.view.pts(pos)
+        z = self.view.z
+        if z > 1.4:
+            # 特寫：灰燼是有體積、略失焦的顆粒
+            buf = np.zeros_like(img)
+            splat(buf, pos, col, w)
+            img += bloom(buf, 0.8 * z, down=1) * (0.8 * z) ** 1.6 * 1.4 + buf * 0.6
+        else:
+            splat(img, pos, col, w)
         big = a["big"]
         if big.any():
             glow = np.zeros_like(img)
@@ -1238,10 +1249,11 @@ class FieldScene:
         lava = ease(ramp(t, c("erupt") + 0.3, c("erupt") + 1.0)) * (1 - ease(ramp(t, c("hush"), c("hush") + 1.6)))
         return max(grid, lava)
 
-    def render(self, frame):
+    def render(self, frame, view=IDENTITY):
         t = frame / self.fps
         c = self.c
         pal = self.tl.pal
+        self.view = view
         img = self._background(t)
         s, hz = self.camera(t)
 
@@ -1249,10 +1261,13 @@ class FieldScene:
         pre = t < c("erupt") + 0.15
         if pre:
             self._underground(img, t)
+            img = view.raster(img)
             lay = self.layer
             lay.clear()
+            view.apply(lay.ctx)
             glow = self.glow
             glow.clear()
+            view.apply(glow.ctx)
             ctx = lay.ctx
             self._draw_names(ctx, t)
             self._draw_roots(ctx, t)
@@ -1272,6 +1287,7 @@ class FieldScene:
             if t < c("fire_rise"):
                 far = self.far
                 far.clear()
+                view.apply(far.ctx)
                 self._draw_plants(far.ctx, t, rows=(-1, 0))
                 fr = far.rgba()
                 blur_k = 1 - ease(ramp(t, c("zoom_start"), c("zoom_end")))
@@ -1318,17 +1334,17 @@ class FieldScene:
                   + 0.9 * calm_k(t, c)) * (1 - ease(ramp(t, c("zoom_start"), c("fire_rise"))) * 0.8)
             over(img, lay.rgba())
             lay.clear()
-            self.motes.draw(img, t, mk, wind=1.8 if t < c("breath") else 0.6)
+            self.motes.draw(img, t, mk, wind=1.8 if t < c("breath") else 0.6, view=view)
             rk = calm_k(t, c) + 0.6 * ease(ramp(t, c("selflove"), c("selflove") + 1)) * (1 - ease(ramp(t, c("zoom_start"), c("zoom_end"))))
             r = atmos.rays(self.W, self.H, t, rk, pal["light_warm"])
             if r is not None:
-                img += r
+                img += view.raster(r)
             if t >= c("selflove"):
                 # 「自愛」：一道暖光照著字草
                 k = ease(ramp(t, c("selflove"), c("selflove") + 0.8)) * (1 - 0.6 * ease(ramp(t, c("zoom_start"), c("zoom_end"))))
                 yy, xx = np.ogrid[0:self.H, 0:self.W]
                 r = np.sqrt(((xx - 960) / (900 * s + 200)) ** 2 + ((yy - (hz - 140 * s)) / (420 * s + 120)) ** 2)
-                light = np.clip(1 - r, 0, 1) ** 1.8
+                light = view.raster(np.clip(1 - r, 0, 1).astype(np.float32) ** 1.8)
                 img += light[..., None] * pal["light_warm"] * 0.22 * k
             over(img, lay.rgba())
             dimk = 1.0
@@ -1350,7 +1366,7 @@ class FieldScene:
             if t >= c("hush"):
                 hushk = 1 - ease(ramp(t, c("hush"), c("hush") + 1.6))
             if lava is not None:
-                mul, add, heat = lava
+                mul, add, heat = (view.raster(a_) for a_ in lava)
                 # 凍結之後，熔岩慢慢冷成暗紅（顏色在變，形狀不動）
                 cool = 1 - 0.45 * ease(ramp(t, c("freeze"), c("hush")))
                 img = img * mix(1.0, mul, hushk) + add * hushk * cool

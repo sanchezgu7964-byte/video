@@ -110,11 +110,13 @@ class Motes:
         self.w = rng.uniform(0.15, 0.6, n)
         self.big = rng.random(n) < 0.04
 
-    def draw(self, img, t, strength, wind=1.0):
+    def draw(self, img, t, strength, wind=1.0, view=None):
         if strength <= 0.002:
             return
         p = self.p0 + self.v * t * wind + np.stack([18 * np.sin(t * 0.4 + self.ph), 10 * np.sin(t * 0.7 + self.ph * 1.3)], 1)
         p[:, 0] = (p[:, 0] + 200) % (self.W + 400) - 200
+        if view is not None:
+            p = view.pts(p)
         col = np.array([1.0, 0.86, 0.66], np.float32)
         tw = 0.6 + 0.4 * np.sin(t * 2.1 + self.ph * 3)
         small = ~self.big

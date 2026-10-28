@@ -2,7 +2,7 @@
 import cairo
 import numpy as np
 
-from .gfx import Layer, bloom, ease, ease_in, ease_out, lin_gradient_v, mix, over, path_polys, ramp, resize, splat
+from .gfx import IDENTITY, Layer, bloom, ease, ease_in, ease_out, lin_gradient_v, mix, over, path_polys, ramp, resize, splat
 from . import leaf as leafmod
 from .noise import curl_grid, fbm, noise3, rand
 
@@ -84,15 +84,14 @@ class OpeningScene:
                 p[out] = rng.random((int(out.sum()), 2)).astype(np.float32) * (self.W, self.H)
                 v[out] = 0
 
-    def render(self, frame):
+    def render(self, frame, view=IDENTITY):
         t = frame / self.fps
         c = self.c
-        pal = self.tl.pal
         if t < c("leaf_in") + 1:
-            return self._render_void(t)
+            return self._render_void(t, view)
         if t < c("mud_hang"):
-            return self._render_leaf(t)
-        return self._render_mud(t)
+            return self._render_leaf(t, view)
+        return self._render_mud(t, view)
 
     # ── 第 2 段：死與生 ─────────────────────────────────────
     def _build_leaf(self):
@@ -127,7 +126,7 @@ class OpeningScene:
                                   spin=rng.normal(0, 1.2), hairs=hairs, hd=rng.uniform(0, 1.5)))
         self.frags = frags
 
-    def _render_leaf(self, t):
+    def _render_leaf(self, t, view):
         c = self.c
         pal = self.tl.pal
         k = ramp(t, c("crack") + 1, c("mud_hang"))
@@ -141,6 +140,8 @@ class OpeningScene:
         glow = np.zeros_like(img)
         gl = Layer(self.W, self.H)
         gctx = gl.ctx
+        view.apply(ctx)
+        view.apply(gctx)
         gctx.set_line_cap(cairo.LINE_CAP_ROUND)
         cold = np.array([0.66, 0.86, 0.9])
         appear = ease(ramp(t, c("leaf_in"), c("leaf_in") + 0.9))
@@ -222,17 +223,16 @@ class OpeningScene:
         near = np.array([0.11, 0.09, 0.07])
         return lin_gradient_v(self.H, self.W, [(0, top), (720 / self.H, near), (1, near * 0.85)])
 
-    def _render_mud(self, t):
+    def _render_mud(self, t, view):
         c = self.c
         pal = self.tl.pal
         k = ease(ramp(t, c("mud_hang"), c("mud_drop")))
         warm = np.broadcast_to(pal["warm_gray"], (self.H, self.W, 3))
-        img = mix(warm, self._sky(t), k).astype(np.float32)
+        img = view.raster(mix(warm, self._sky(t), k).astype(np.float32))
         # 黏稠的泥：metaball 場（低解析）
         w, h = 960, 540
         sx = self.W / w
-        X = np.arange(w, dtype=np.float32)[None, :] * sx
-        Y = np.arange(h, dtype=np.float32)[:, None] * sx
+        X, Y = view.src(np.arange(w, dtype=np.float32)[None, :] * sx, np.arange(h, dtype=np.float32)[:, None] * sx)
         blobs = []
         hang = ramp(t, c("mud_hang"), c("mud_drop"))
         wob = 14 * float(noise3(t * 0.4, 0, 0, 21))
@@ -284,7 +284,7 @@ class OpeningScene:
         img += up[..., :3]
         return img
 
-    def _render_void(self, t):
+    def _render_void(self, t, view):
         c = self.c
         pal = self.tl.pal
         a = self.alive
@@ -297,16 +297,22 @@ class OpeningScene:
         intensity = 0.95
         fade_in = ease(ramp(t, 0.0, 3.0))
         dens = np.zeros_like(img)
-        splat(dens, self.p[a], col, self.w[a] * intensity * fade_in)
+        z = view.z
+        gain = min(z, 4.0) ** 0.6
+        splat(dens, view.pts(self.p[a]), col, self.w[a] * intensity * fade_in * gain)
         if t >= c("crack"):
             # 洩出時拉出流線
             for k in (0.33, 0.66):
-                splat(dens, self.p[a] - self.v[a] * self.dt * k * 1.5, col,
-                      self.w[a] * intensity * 0.6 * np.clip(speed / 400, 0, 1))
+                splat(dens, view.pts(self.p[a] - self.v[a] * self.dt * k * 1.5), col,
+                      self.w[a] * intensity * 0.6 * np.clip(speed / 400, 0, 1) * gain)
+        if z > 1.5:
+            # 特寫：微粒變成有體積、略失焦的顆粒
+            dens = bloom(dens, 0.9 * z, down=1) * (0.9 * z) ** 1.2 * 1.6 + dens * 0.4
         img += dens + bloom(dens, 10) * 0.45
         lay = self.layer
         lay.clear()
         ctx = lay.ctx
+        view.apply(ctx)
         if t >= c("crack_hairline"):
             # 「我將開口」：髮絲般的裂縫，從中心慢慢延伸
             L = mix(0, self.H * 0.32, ease(ramp(t, c("crack_hairline"), c("crack") - 0.3)))
@@ -336,7 +342,7 @@ class OpeningScene:
             w = self.crack_width(t)
             flash = np.exp(-(t - c("crack")) / 0.5) * 0.35
             if flash > 0.01:
-                xx = np.arange(self.W, dtype=np.float32)
+                xx = view.src(np.arange(self.W, dtype=np.float32), 0)[0]
                 prof = np.exp(-np.maximum(np.abs(xx - self.W / 2) - w / 2, 0) / 70) * flash
                 img += prof[None, :, None] * np.array([0.8, 0.78, 0.72], np.float32)
         return img
