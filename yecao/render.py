@@ -92,11 +92,12 @@ def render_range(t0, t1, name, workers, with_audio=True):
     chunk_dir = out_dir / "chunks" / name
     chunk_dir.mkdir(parents=True, exist_ok=True)
     n = f1 - f0
-    k = max(1, min(workers, n // 30))
+    # 切得比核心數多，重的段落（熔岩、灰燼）才不會拖住整體
+    k = max(1, min(workers * 2, n // 30))
     edges = [f0 + n * i // k for i in range(k + 1)]
     jobs = [(edges[i], edges[i + 1], chunk_dir / f"{i:03d}.mp4") for i in range(k)]
     t_start = time.time()
-    with mp.get_context("fork").Pool(k) as pool:
+    with mp.get_context("fork").Pool(min(k, workers)) as pool:
         parts = pool.map(render_chunk, jobs)
     lst = chunk_dir / "list.txt"
     lst.write_text("".join(f"file '{p.name}'\n" for p in parts))
