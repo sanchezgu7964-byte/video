@@ -473,7 +473,8 @@ def apply_edit(mix, edit, rng):
             k = 0.5 if s.overlay else 1.0
             mix[i0:i0 + L] = mix[i0:i0 + L] * (1 - 0.6 * k * g[:, None]) + src[j0:j0 + L] * (k * g[:, None])
         if s.tick:
-            cl = knock(rng, 3400, 0.025, 0.15) * 0.22 + filt(white(rng, int(0.012 * SR)), "highpass", 6000) * 0.05
+            cl = knock(rng, 3400, 0.025, 0.15) * 0.22
+            cl[: int(0.012 * SR)] += filt(white(rng, int(0.012 * SR)), "highpass", 6000) * 0.05
             mix[i0:i0 + len(cl)] += cl[: n - i0, None]
     gate = np.ones(n, np.float32)
     for s in edit.shots:
