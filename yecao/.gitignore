@@ -4,5 +4,3 @@ __pycache__/
 out/
 # 由 tools/fetch_fonts.sh 產生
 fonts/
-# 配樂〈Eclosion〉不隨 repo 散布，請自行放到 audio/eclosion.mp3
-audio/*.mp3

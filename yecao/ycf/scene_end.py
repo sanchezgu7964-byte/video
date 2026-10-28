@@ -43,6 +43,29 @@ class EndScene:
         rng = rand(self.seed, 11, 1)
         self.droop_dir = rng.choice([-1, 1], len(self.clump))
         self.specks = [rng.normal(0, 1, (18, 2)) * (p.size * 0.3, p.h * 0.25) - (0, p.h * 0.5) for p in self.clump]
+        # 黴絲：與第 2 段葉脈腐爛時同一種隨機漫步的細線
+        self.hairs = []
+        for p in self.clump:
+            hs = []
+            for _ in range(int(p.size / 6)):
+                cont = p.base[rng.integers(len(p.base))]
+                x0, u0 = cont[rng.integers(len(cont))]
+                ang = rng.uniform(0, 2 * np.pi)
+                pts = [np.zeros(2)]
+                for _ in range(12):
+                    ang += rng.normal(0, 0.5)
+                    pts.append(pts[-1] + 2.4 * np.array([np.cos(ang), np.sin(ang)]))
+                hs.append((x0, u0, np.array(pts, np.float32)))
+            self.hairs.append(hs)
+        # 旁邊陸續長出的叢：(x 偏移, 縮放, 相位差, 從第幾圈開始)
+        self.copies = [(0.0, 1.0, 0.0, 0)]
+        front = [(-370, 0.8), (380, 0.78), (-660, 0.62), (650, 0.6), (-880, 0.48), (870, 0.47)]
+        back = [(-190, 0.42), (200, 0.4), (-520, 0.36), (510, 0.35), (-770, 0.3), (760, 0.3)]
+        order = [x for pair in zip(front, back) for x in pair]
+        for j, (dx, sc) in enumerate(order, 1):
+            self.copies.append((dx + rng.normal(0, 12), sc, rng.uniform(0.05, 0.35), j))
+        # 根：每次重生都往下伸
+        self.roots = [[r.copy() for r in p.roots] for p in self.clump]
         self.years = self.tl.raw["years"]["list"]
 
     def _cycle_at(self, t):
@@ -60,16 +83,59 @@ class EndScene:
         ctx.save()
         ctx.rectangle(0, 0, self.W, clumpmod.BASE[1])
         ctx.clip()
-        for i, p in enumerate(self.clump):
-            theta = 0.05 * np.sin(t * 2.3 + i) * (1 - rot) + self.droop_dir[i] * 0.9 * rot
-            polys = clumpmod.clump_polys(p, theta=theta, squash=1 - 0.45 * rot, rise=grow)
-            col = mix(mix(pal["grass"], pal["light_warm"], 0.25), np.array([0.26, 0.19, 0.13]), rot)
-            fill_polys(ctx, polys, col, alpha)
-        ctx.restore()
-        # 腐爛也是生長：黴點
-        if rot > 0.1:
+        bx, by = clumpmod.BASE
+        # 每轉一圈，旁邊就多長出一叢；彼此略錯開相位，越轉越快時整條地平線都在閃
+        for j, (dx, sc, ph, k0) in enumerate(self.copies):
+            if k < k0:
+                continue
+            uj = (u + ph) % 1.0 if j else u
+            grow_j = ease_out(ramp(uj, 0.0, 0.3), 2)
+            rot_j = ease(ramp(uj, 0.5, 1.0))
+            alpha_j = (1 - ease(ramp(uj, 0.85, 1.0))) * (1 if j == 0 else 0.55 + 0.45 * sc)
+            if k == k0 and j:
+                alpha_j *= ease(ramp(u, 0, 0.3))
             for i, p in enumerate(self.clump):
+                theta = 0.05 * np.sin(t * 2.3 + i + j) * (1 - rot_j) + self.droop_dir[i] * 0.9 * rot_j
+                polys = clumpmod.clump_polys(p, theta=theta, squash=1 - 0.45 * rot_j, rise=grow_j)
+                if j:
+                    polys = [(q - (bx, by)) * sc + (bx + dx, by) for q in polys]
+                col = mix(mix(pal["grass"], pal["light_warm"], 0.25), np.array([0.26, 0.19, 0.13]), rot_j)
+                col = col * (1 if j == 0 else 0.55 + 0.45 * sc)
+                fill_polys(ctx, polys, col, alpha_j)
+        ctx.restore()
+        # 根：生長時往地下伸
+        for i, p in enumerate(self.clump):
+            for r in self.roots[i]:
+                n = max(2, int(len(r) * grow))
+                q = r[:n] * (1, 1.4) + (p.x, clumpmod.BASE[1])
+                ctx.new_path()
+                ctx.move_to(*q[0])
+                for pt in q[1:]:
+                    ctx.line_to(*pt)
+                ctx.set_source_rgba(0.42, 0.33, 0.24, 0.7 * alpha)
+                ctx.set_line_width(1.1)
+                ctx.stroke()
+        # 腐爛也是生長：黴點與黴絲
+        if rot > 0.05:
+            for i, p in enumerate(self.clump):
+                theta = self.droop_dir[i] * 0.9 * rot
+                for x0, u0, hp in self.hairs[i]:
+                    loc = p.warp([np.array([[x0, u0]], np.float32)], theta, 1 - 0.45 * rot)[0][0]
+                    origin = loc + (p.x, clumpmod.BASE[1])
+                    n = int(len(hp) * rot)
+                    if n < 2:
+                        continue
+                    q = hp[:n] + origin
+                    ctx.new_path()
+                    ctx.move_to(*q[0])
+                    for pt in q[1:]:
+                        ctx.line_to(*pt)
+                    ctx.set_source_rgba(0.88, 0.86, 0.8, 0.5 * alpha)
+                    ctx.set_line_width(0.7)
+                    ctx.stroke()
+                ctx.new_path()
                 for sx, sy in self.specks[i]:
+                    ctx.new_sub_path()
                     ctx.arc(p.x + sx * (1 + rot), clumpmod.BASE[1] + sy * (1 - 0.45 * rot), 1.3, 0, 2 * np.pi)
                 ctx.set_source_rgba(0.85, 0.83, 0.76, 0.5 * rot * alpha)
                 ctx.fill()
@@ -85,15 +151,20 @@ class EndScene:
     def _build_poem(self):
         c = self.c
         rng = rand(self.seed, 12, 1)
-        text = "".join(ln["text"] for ln in self.tl.raw["line"] if ln.get("mode", "type") == "type")
-        size, adv, per_row, lead = 25, 33.5, 44, 42
-        rows = [text[i:i + per_row] for i in range(0, len(text), per_row)]
-        y0 = 150
+        # 全詩直排、由右至左，佔滿地平線以上
+        text = "".join(ln["text"] for ln in self.tl.raw["line"] if ln.get("mode", "type") in ("type", "carve"))
+        size, vadv, per_col, gap = 29, 32, 16, 57
+        cols = [text[i:i + per_col] for i in range(0, len(text), per_col)]
+        x_right = self.W / 2 + (len(cols) - 1) * gap / 2
+        y0 = 62
         glyphs = []
-        for r, row in enumerate(rows):
-            x0 = self.W / 2 - per_row * adv / 2
-            for j, ch in enumerate(row):
-                glyphs.append([ch, x0 + j * adv, y0 + r * lead, size])
+        for ci, col in enumerate(cols):
+            cx = x_right - ci * gap
+            for j, ch in enumerate(col):
+                x, y = cx - size / 2, y0 + j * vadv + size * 0.88
+                if ch in "，。、":
+                    x, y = x + size * 0.55, y - size * 0.55   # 直排標點靠右上
+                glyphs.append([ch, x, y, size])
         self.poem = glyphs
         n = len(glyphs)
         xs = np.array([g[1] for g in glyphs])
@@ -123,7 +194,7 @@ class EndScene:
                 dx = self._wind(tau)
                 dy = self.p_lift[i] * tau + 18 * np.sin(tau * 3 + self.p_ph[i])
                 rot = self.p_spin[i] * tau
-            a = 0.5 * appear * (1 - ease(ramp(tau, 1.2, 2.8)))
+            a = 0.42 * appear * (1 - ease(ramp(tau, 1.2, 2.8)))
             if a <= 0.004 or x + dx < -60:
                 continue
             self._blit(ctx, ch, x + dx, y + dy, size, (0.84, 0.8, 0.72), a, rot)
@@ -193,7 +264,7 @@ class EndScene:
         elif t >= c("farewell"):
             self._draw_farewell(ctx, t)
         # 被大地收下：溫暖的土色由下往上沉積
-        e = ease(ramp(t, c("earth"), c("music_end") - 0.3))
+        e = ease(ramp(t, c("earth"), c("silence") - 0.3))
         if e > 0:
             edge = self.H * (1 - e * 1.25) + 0.0
             ys = np.arange(self.H, dtype=np.float32)

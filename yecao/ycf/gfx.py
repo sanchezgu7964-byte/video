@@ -52,6 +52,18 @@ def fill_polys(ctx, polys, rgb, alpha=1.0):
     ctx.fill()
 
 
+def fill_polys_grad(ctx, polys, p0, p1, stops):
+    """以線性漸層填色。stops: [(offset, rgb, alpha), ...]，p0→p1 為漸層方向。"""
+    ctx.new_path()
+    path_polys(ctx, polys)
+    ctx.set_fill_rule(cairo.FILL_RULE_WINDING)
+    g = cairo.LinearGradient(float(p0[0]), float(p0[1]), float(p1[0]), float(p1[1]))
+    for off, rgb, a in stops:
+        g.add_color_stop_rgba(off, float(rgb[0]), float(rgb[1]), float(rgb[2]), float(a))
+    ctx.set_source(g)
+    ctx.fill()
+
+
 def splat(buf: np.ndarray, xy: np.ndarray, rgb: np.ndarray, w: np.ndarray | float = 1.0,
           bilinear=True) -> None:
     """把粒子以加法潑到浮點畫布上。rgb 為 (N,3) 或 (3,)。"""
@@ -114,6 +126,10 @@ class Finisher:
         self.grain = [rng.standard_normal((H // 2 + 8, W // 2 + 8)).astype(np.float32) for _ in range(16)]
 
     def __call__(self, img: np.ndarray, frame: int, grain=0.018) -> np.ndarray:
+        # 底片的光暈：亮部向外暈出一點暖色
+        hl = np.clip(img - 0.45, 0, None)
+        if hl.max() > 0.01:
+            img = img + bloom(hl, 24, down=4) * np.array([0.55, 0.38, 0.25], np.float32)
         img = img * self.vig
         g = self.grain[frame % 16]
         ox, oy = (frame * 7) % 8, (frame * 3) % 8

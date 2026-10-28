@@ -2,7 +2,7 @@
 import cairo
 import numpy as np
 
-from .gfx import Layer, bloom, ease, ease_in, ease_out, lin_gradient_v, mix, over, path_polys, ramp, splat
+from .gfx import Layer, bloom, ease, ease_in, ease_out, lin_gradient_v, mix, over, path_polys, ramp, resize, splat
 from . import leaf as leafmod
 from .noise import curl_grid, fbm, noise3, rand
 
@@ -56,7 +56,6 @@ class OpeningScene:
             return
         p, v = self.p, self.v
         dt = self.dt
-        loud = self.tl.level(t)
         # 音樂歸零前，微粒像屏住呼吸一樣放慢
         hold = 1 - 0.85 * ease(ramp(t, c("crack") - 1.2, c("crack") - 0.2))
         if t >= c("crack"):
@@ -65,7 +64,7 @@ class OpeningScene:
         ax, ay = curl_grid(self.W, self.H, z, 410.0, 1, 24, 160.0)(p[:, 0], p[:, 1])
         bx, by = curl_grid(self.W, self.H, z * 3, 120.0, 2, 12, 60.0)(p[:, 0], p[:, 1])
         target = np.stack([ax * 16 + bx * 6, ay * 9 + by * 4], 1)
-        target *= hold * (0.8 + 0.2 * np.clip((loud + 10) / 20, 0, 1))
+        target *= hold
         if t >= c("crack"):
             u = t - c("crack")
             cx = self.crack_x(p[:, 1])
@@ -239,16 +238,16 @@ class OpeningScene:
         wob = 14 * float(noise3(t * 0.4, 0, 0, 21))
         if t < c("mud_drop"):
             # 從畫面頂端垂下、越積越重
-            cy = mix(10, 300, ease(hang))
-            r = mix(60, 150, ease(hang))
+            cy = mix(20, 330, ease(hang))
+            r = mix(70, 185, ease(hang))
             main = (960 + wob, cy)
             for j in range(1, 7):
                 u = j / 7
                 blobs.append((960 + wob * u, mix(-60, cy, u), mix(95, 46, u) * mix(1.0, 0.75, hang)))
         else:
             u = ramp(t, c("mud_drop"), c("mud_land"))
-            cy = mix(300, 720 - 80, ease_in(u, 2.2))
-            r = 150 * (1 + 0.1 * ease_in(u, 3))
+            cy = mix(330, 720 - 95, ease_in(u, 2.2))
+            r = 185 * (1 + 0.1 * ease_in(u, 3))
             main = (960 + wob, cy)
             blobs.append((main[0], cy - r * 1.1 * (1 - u), r * 0.6 * (1 - u) + 1))
             back = ease_out(ramp(t, c("mud_drop"), c("mud_drop") + 0.8))
@@ -259,6 +258,14 @@ class OpeningScene:
         for j in range(6):
             ang = j * np.pi / 3 + t * 0.7 + float(noise3(j, t * 0.5, 0, 22))
             blobs.append((main[0] + np.cos(ang) * r * 0.45, main[1] + np.sin(ang) * r * 0.35, r * 0.42))
+        # 垂掛時零星滴下的小泥點
+        drng = rand(self.seed, 3, 7)
+        for k in range(7):
+            td = c("mud_hang") + 1.2 + k * 0.7 + drng.uniform(0, 0.4)
+            if td < t < td + 1.2 and t < c("mud_drop"):
+                uu = t - td
+                hh = mix(10, 330, ease(ramp(td, c("mud_hang"), c("mud_drop"))))
+                blobs.append((960 + drng.uniform(-60, 60), hh + 120 + 900 * uu * uu, 14))
         f = np.zeros((h, w), np.float32)
         for bx, by, br in blobs:
             f += br * br / ((X - bx) ** 2 + (Y - by) ** 2 + 1)
@@ -268,8 +275,10 @@ class OpeningScene:
         gy, gx = np.gradient(ab)
         shade = 0.82 + np.clip(gy * 3.0 + gx * 0.8, -0.25, 0.45)
         col = pal["mud"][None, None, :] * shade[..., None]
+        # 濕亮的高光：在朝上、朝左的邊緣
+        spec = np.clip((gy * 0.9 + gx * 0.5) * 4 - 0.35, 0, 1) ** 2 * a
+        col = col + spec[..., None] * np.array([0.55, 0.45, 0.34], np.float32)
         rgba = np.concatenate([col * a[..., None], a[..., None]], -1)
-        from .gfx import resize
         up = resize(rgba, self.W, self.H)
         img *= 1 - up[..., 3:4]
         img += up[..., :3]

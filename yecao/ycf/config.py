@@ -1,5 +1,4 @@
-"""讀取時間軸設定與配樂分析結果。"""
-import json
+"""讀取時間軸設定，並由 [pulse] 產生全片的節拍網格。"""
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,9 +24,6 @@ class Timeline:
     cues: dict
     pal: dict
     beats: np.ndarray
-    loud: np.ndarray       # 每影格的響度（dB）
-    low: np.ndarray        # 每影格低頻響度（dB）
-    onset: np.ndarray
 
     @property
     def nframes(self) -> int:
@@ -52,26 +48,16 @@ class Timeline:
     def period(self) -> float:
         return float(np.median(np.diff(self.beats)))
 
-    def level(self, t: float, which: str = "loud") -> float:
-        arr = self.loud if which == "loud" else self.low
-        i = int(np.clip(t * 30, 0, len(arr) - 1))
-        return float(arr[i])
-
 
 def load(path: Path = ROOT / "config/timeline.toml") -> Timeline:
     raw = tomllib.loads(path.read_text())
     o = raw["output"]
-    ana_path = ROOT / raw["audio"]["analysis"]
-    if ana_path.exists():
-        ana = json.loads(ana_path.read_text())
-        beats = np.array(ana["beats"])
-        loud, low, onset = (np.array(ana[k]) for k in ("loudness_db", "low_db", "onset"))
-    else:
-        # 沒有分析檔時，退回設定的 BPM 等距網格
-        p = 60 / raw["audio"]["bpm_hint"]
-        beats = np.arange(0, o["duration"], p)
-        n = int(o["duration"] * 30) + 1
-        loud, low, onset = np.zeros(n), np.zeros(n), np.zeros(n)
+    pu = raw["pulse"]
+    period = 60 / pu["bpm"]
+    k0 = -int(np.ceil(pu["anchor"] / period))
+    k1 = int(np.ceil((o["duration"] - pu["anchor"]) / period))
+    beats = pu["anchor"] + np.arange(k0, k1 + 1) * period
+    beats = beats[(beats >= 0) & (beats <= o["duration"])]
     pal = {k: hex2rgb(v) for k, v in raw["palette"].items()}
     return Timeline(raw, o["width"], o["height"], o["fps"], o["duration"], o["seed"],
-                    raw["cues"], pal, beats, loud, low, onset)
+                    raw["cues"], pal, beats)

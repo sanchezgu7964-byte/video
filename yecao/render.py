@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """《野草》題辭 —— 逐影格渲染並以 ffmpeg 合成。
 
-  python3 render.py --analyze                      # 偵測配樂拍點，寫入 analysis/beats.json
+  python3 render.py --sound                        # 只生成聲音 → out/sound.wav
   python3 render.py --range 14:24 --name s1        # 渲染片段（樣片）
   python3 render.py --full                         # 全片
   python3 render.py --still 65.3                   # 單張 PNG
 """
 import argparse
-import json
 import multiprocessing as mp
 import subprocess
 import sys
@@ -20,7 +19,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from ycf import audio, config  # noqa: E402
+from ycf import config, sound  # noqa: E402
 from ycf.gfx import Finisher, Layer, over  # noqa: E402
 from ycf.scene_end import EndScene  # noqa: E402
 from ycf.scene_field import FieldScene  # noqa: E402
@@ -107,9 +106,11 @@ def render_range(t0, t1, name, workers, with_audio=True):
     final = out_dir / f"{name}.mp4"
     preview = out_dir / f"{name}_preview.mp4"
     if with_audio:
-        wav = chunk_dir / "audio.wav"
-        audio.mix(tl, wav, f0 / tl.fps, f1 / tl.fps)
-        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(video), "-i", str(wav), "-c:v", "copy",
+        full = out_dir / "sound.wav"
+        if not full.exists():
+            sound.write(tl, full)
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(video), "-ss", f"{f0 / tl.fps:.4f}",
+                        "-t", f"{(f1 - f0) / tl.fps:.4f}", "-i", str(full), "-c:v", "copy",
                         "-c:a", "aac", "-b:a", "256k", "-shortest", "-movflags", "+faststart", str(final)],
                        check=True)
     else:
@@ -124,7 +125,7 @@ def render_range(t0, t1, name, workers, with_audio=True):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--analyze", action="store_true")
+    ap.add_argument("--sound", action="store_true")
     ap.add_argument("--range")
     ap.add_argument("--name", default="clip")
     ap.add_argument("--full", action="store_true")
@@ -133,11 +134,10 @@ def main():
     ap.add_argument("--no-audio", action="store_true")
     a = ap.parse_args()
     tl = config.load()
-    if a.analyze:
-        cues = [float(v) for v in tl.cues.values()]
-        res = audio.analyze(ROOT / tl.raw["audio"]["file"], tl.raw["audio"]["bpm_hint"], cues)
-        (ROOT / tl.raw["audio"]["analysis"]).write_text(json.dumps(res))
-        print(f"BPM {res['bpm']:.2f}, {len(res['beats'])} beats")
+    (ROOT / "out").mkdir(exist_ok=True)
+    if a.sound:
+        sound.write(tl, ROOT / "out" / "sound.wav")
+        print(ROOT / "out" / "sound.wav")
     if a.still:
         film = Film()
         for t in a.still:
@@ -149,6 +149,8 @@ def main():
         t0, t1 = (float(v) for v in a.range.split(":"))
         render_range(t0, t1, a.name, a.workers, not a.no_audio)
     if a.full:
+        if not a.no_audio:
+            sound.write(tl, ROOT / "out" / "sound.wav")
         render_range(0, tl.duration, "yecao_tici", a.workers, not a.no_audio)
 
 

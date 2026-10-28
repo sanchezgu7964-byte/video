@@ -5,36 +5,35 @@
 width = 1920
 height = 1080
 fps = 30
-duration = 208.53          # 配樂 205.53 秒 + 結尾土色無聲停留 3 秒
+duration = 208.53          # 最後 3 秒土色在無聲中停留
 seed = 1927
 
-[audio]
-file = "audio/eclosion.mp3"
-analysis = "analysis/beats.json"
-bpm_hint = 66
-# 2:30 起把音樂壓到 −30 dB，只留地底低頻；2:38 拍點上恢復全音量
-hush_start = 150.0
-hush_end = 157.8
-hush_db = -30
-hush_lowpass_hz = 90
-hush_low_gain = 0.22
-fade_out_start = 200.0
-fade_out_end = 205.53
+# ── 脈搏 ─────────────────────────────────────────────────────
+# 全片的節拍由這裡產生；聲音與畫面都從同一份時間軸生成，所以一定對齊。
+# 錨點放在熔岩噴出那一拍，往前往後等距展開。
+[pulse]
+bpm = 66.26
+anchor = 123.32
 
+# ── 聲音 ─────────────────────────────────────────────────────
+[sound]
+sample_rate = 48000
+master_db = -1.0          # 最終峰值正規化
+reverb_seconds = 3.2
 [fonts]
 serif = "fonts/serif_light"     # 字幕（宋體系，偏細）
 grass = "fonts/serif_regular"   # 字草：同一字體家族，稍粗以便彎折
 sans = "fonts/sans_medium"      # 口號網格（黑體）
 
-# ── 關鍵對位點（已依配樂分析校準） ─────────────────────────────
+# ── 關鍵時間點（畫面與聲音共用） ─────────────────────────────
 [cues]
 crack_hairline = 13.5    # 「我將開口」：中央出現髮絲般的裂縫
-crack = 22.70            # 音樂歸零後重新進入：裂縫打開，微粒洩出
+crack = 22.70            # 屏息之後：裂縫打開，微粒洩出
 leaf_in = 25.0
 decay = 29.0             # 「朽腐」：碎片長出黴絲
 mud_hang = 35.0
 mud_drop = 40.6
-mud_land = 42.0          # +14 dB 躍升
+mud_land = 42.0          # 泥砸在地平線上
 tree_peak = 44.4
 tree_collapse = 45.8
 grass_rise = 47.0
@@ -55,14 +54,14 @@ dim = 121.0              # 2:01 一切暗一下
 erupt = 123.32           # 2:03 熔岩噴出
 freeze = 140.0           # 2:20 「無可朽腐」
 hush = 150.0             # 2:30 靜穆
-restore = 157.81         # 2:38 「天地即不如此靜穆」
+restore = 157.73         # 2:38 「天地即不如此靜穆」（拍點）
 witness = 162.0          # 2:42 作證
 cycle = 172.0            # 2:52 火速
-stop = 180.92            # 3:01 驟停
+stop = 181.27            # 3:01 驟停（拍點）
 farewell = 188.0         # 3:08 去罷
 colophon = 198.0         # 3:18 落款
 earth = 199.0
-music_end = 205.53
+silence = 205.53         # 之後完全無聲
 
 # ── 配色 ───────────────────────────────────────────────────
 [palette]
@@ -203,7 +202,7 @@ until = 149.8
 at = 150.6
 text = "天地有如此靜穆，我不能大笑而且歌唱。"
 [[line]]
-at = 157.81
+at = 157.73
 text = "天地即不如此靜穆，我或者也將不能。"
 until = 161.6
 
@@ -219,10 +218,10 @@ text = "為我自己，為友與仇，人與獸，愛者與不愛者，"
 [[line]]
 at = 176.6
 text = "我希望這野草的朽腐，火速到來。"
-until = 180.92
+until = 181.27
 fade_out = 0.0
 [[line]]
-at = 181.8
+at = 182.1
 text = "要不然，我先就未曾生存，這實在比死亡與朽腐更其不幸。"
 until = 187.4
 

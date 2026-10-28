@@ -58,6 +58,17 @@ class Subtitles:
     def _layout(self, ln):
         mode = ln["mode"]
         if mode == "colophon":
+            # 落款：直排兩行，靠右，像寫在紙上的題記
+            size, vadv = 34, 44
+            cols = ln["text"].split("\u3000")
+            out, n = [], 0
+            for ci, col in enumerate(cols):
+                x = 1610 - ci * 62 - size / 2
+                for j, ch in enumerate(col):
+                    out.append((ch, x, 300 + ci * 88 + j * vadv + size * 0.88, size, n))
+                    n += 1
+            return out
+        if mode == "colophon":
             size, track, max_c = 26, 0.12, 40
         elif mode == "carve":
             size, track, max_c = 40, 0.14, 24
@@ -103,8 +114,8 @@ class Subtitles:
                     a = ease_out((t - ln["at"]) / 0.35, 2)
                     dy = 0.0
                 elif mode == "colophon":
-                    a = ease((t - ln["at"] - i * 0.14) / 1.2)
-                    dy = (1 - a) * 3
+                    a = ease((t - ln["at"] - i * 0.16) / 1.0)
+                    dy = (1 - a) * 4
                 else:
                     a = ease((t - ln["at"] - i * self.interval) / self.fade)
                     dy = (1 - a) * 5

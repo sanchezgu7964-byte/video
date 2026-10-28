@@ -7,10 +7,12 @@ import cairo
 import numpy as np
 from PIL import Image, ImageDraw
 
+from . import atmos
 from . import clump as clumpmod
 from . import fonts
 from . import tree as treemod
-from .gfx import (Layer, bloom, ease, ease_in, ease_out, fill_polys, lin_gradient_v, mix, over, path_polys,
+from .gfx import (Layer, bloom, ease, ease_in, ease_out, fill_polys, fill_polys_grad, lin_gradient_v, mix, over,
+                  path_polys,
                   ramp, resize, splat)
 from .noise import fbm, noise3, rand
 
@@ -115,6 +117,19 @@ class Plant:
         return min(abs(self.theta), 1.0) * self.h * 0.10
 
 
+def shift(img, dx, dy):
+    """整張畫面平移（邊緣複製），用於撞擊的震動。"""
+    H, W = img.shape[:2]
+    pad = max(abs(dx), abs(dy)) + 1
+    p = np.pad(img, ((pad, pad), (pad, pad), (0, 0)), mode="edge")
+    return p[pad - dy:pad - dy + H, pad - dx:pad - dx + W]
+
+
+def calm_k(t, c):
+    """第 5 段（呼吸之後、自愛之前）的明亮程度。"""
+    return ease(ramp(t, c("breath"), c("breath") + 2)) * (1 - ease(ramp(t, c("selflove") - 1, c("selflove") + 2)))
+
+
 class FieldScene:
     t0 = 42.0
     t1 = 172.0
@@ -131,6 +146,10 @@ class FieldScene:
         self.sface = fonts.face(tl.raw["fonts"]["sans"])
         self.layer = Layer(self.W, self.H)
         self.glow = Layer(self.W, self.H)
+        self.far = Layer(self.W, self.H)
+        self.sky = atmos.Sky(self.seed, self.W, self.H)
+        self.soil = atmos.Soil(tl)
+        self.motes = atmos.Motes(self.seed, self.W, self.H)
         self._build_plants()
         self._build_events()
         self._build_grid()
@@ -138,6 +157,7 @@ class FieldScene:
         self.frame = int(round(self.t0 * self.fps)) - 1
         self._build_tree()
         self._build_witness()
+        self._build_impacts()
         self.pieces = []      # 被切下、正在落下的字塊
         self.ash = None
         self.lava_cache = None
@@ -163,6 +183,16 @@ class FieldScene:
                 self.plants.append(Plant(k, ch, g, x, row, size, rng, t_rise))
                 k += 1
         self.max_h = max(p.h for p in self.plants)
+        # 地平線上一整排細小、模糊的字草，給田野深度
+        self.fringe = []
+        xs = np.sort(rng.uniform(-40, 1960, 110))
+        for i, x in enumerate(xs):
+            ch = chars[(i * 11 + 5) % len(chars)]
+            size = rng.uniform(16, 34)
+            t_rise = self.c("grass_rise") + 1.5 + rng.uniform(0, 8)
+            fp = Plant(1000 + i, ch, self.gface.glyph(ch), float(x), -1, size, rng, t_rise)
+            fp.roots = []
+            self.fringe.append(fp)
 
     def _build_tree(self):
         c = self.c
@@ -283,14 +313,19 @@ class FieldScene:
             angs.append(a)
         self.w_beats = beats
         self.w_angles = np.array(angs)
-        # 三對抽象輪廓：友與仇、人與獸、愛者與不愛者
+        # 三對輪廓：友與仇、人與獸、愛者與不愛者——用字本身的輪廓，放得很大、只剩一條線
+        serif = fonts.face(self.tl.raw["fonts"]["serif"])
         self.pairs = []
-        for k, (u0, v0, size, aspect) in enumerate([(-440, 230, 95, 1.0), (380, 300, 120, 1.7), (130, 170, 62, 0.8)]):
-            th = np.linspace(0, 2 * np.pi, 90, endpoint=False)
-            rr = size * (1 + 0.22 * noise3(np.cos(th) * 1.3, np.sin(th) * 1.3, k * 5.0, 140 + k))
-            shape = np.stack([np.cos(th) * rr * aspect ** 0.5, np.sin(th) * rr / aspect ** 0.5], 1)
+        spec = [(-500, 175, 250, "友", "仇", False), (470, 205, 290, "人", "獸", False), (-20, 240, 200, "愛", "愛", True)]
+        for k, (u0, v0, size, a, b, dashed) in enumerate(spec):
+            shapes = []
+            for ch in (a, b):
+                g = serif.glyph(ch)
+                x0, y0, x1, y1 = g.bbox
+                ctr = np.array([(x0 + x1) / 2, (y0 + y1) / 2])
+                shapes.append([((cc - ctr) * size).astype(np.float32) for cc in g.contours])
             t_in = float(beats[min(3 + 3 * k, len(beats) - 1)])
-            self.pairs.append(dict(u=u0, v=v0, shape=shape.astype(np.float32), t=t_in))
+            self.pairs.append(dict(u=u0, v=v0, shapes=shapes, t=t_in, dashed=dashed))
         self.gather_n = 26000
         self.gather_tgt = clumpmod.sample_points(self.clump, self.gather_n, self.seed, self.W, self.H)
 
@@ -337,29 +372,41 @@ class FieldScene:
             ctx.set_source_rgba(0.9, 0.86, 0.78, 0.55 * k)
             ctx.set_line_width(1.0)
             ctx.stroke()
-        # 成對輪廓
+        # 成對輪廓：同一道光（以叢為中心的暖色徑向漸層）照在兩邊
+        light = cairo.RadialGradient(cx, cy - 60, 0, cx, cy - 60, 900)
+        light.add_color_stop_rgba(0, *[float(v) for v in pal["light_warm"]], 0.9)
+        light.add_color_stop_rgba(1, *[float(v) for v in pal["light_warm"]], 0.0)
         for pr in self.pairs:
-            a = ease(ramp(t, pr["t"], pr["t"] + 0.6)) * (1 - out_k)
+            a = ease(ramp(t, pr["t"], pr["t"] + 0.8)) * (1 - out_k)
             if a <= 0:
                 continue
-            for sgn in (1, -1):
-                loc = pr["shape"] + (pr["u"], pr["v"])
-                pts = np.array([cx, cy]) + loc[:, :1] * dvec + sgn * loc[:, 1:2] * nvec
-                n = max(2, int(len(pts) * ease(ramp(t, pr["t"], pr["t"] + 0.6))))
-                ctx.new_path()
-                path_polys(ctx, [pts[:n]], close=n == len(pts))
-                # 亮側用暗線，暗側用亮線；判斷所在側
-                on_light = (pts.mean(0) - (cx, cy)) @ nvec > 0
-                cc = (0.16, 0.13, 0.1) if on_light else (0.8, 0.77, 0.7)
-                ctx.set_source_rgba(*cc, 0.85 * a)
-                ctx.set_line_width(1.6)
-                ctx.stroke()
-                # 被同一道光照到的一側邊緣
-                ctx.new_path()
-                path_polys(ctx, [pts[: max(2, n // 3)]], close=False)
-                ctx.set_source_rgba(*[float(v) for v in pal["light_warm"]], 0.6 * a)
-                ctx.set_line_width(2.2)
-                ctx.stroke()
+            draw = ease(ramp(t, pr["t"], pr["t"] + 1.2))
+            for side, sgn in ((0, 1), (1, -1)):
+                center = np.array([cx, cy]) + pr["u"] * dvec + sgn * pr["v"] * nvec
+                # 字的方向跟著分界線轉
+                R = np.stack([dvec, nvec], 1)
+                polys = []
+                for q in pr["shapes"][side]:
+                    n = max(2, int(len(q) * draw))
+                    polys.append(q[:n] @ R.T + center)
+                on_light = (center - (cx, cy)) @ nvec > 0
+                cc = (0.17, 0.14, 0.11) if on_light else (0.78, 0.75, 0.69)
+                for src, width, alpha in (((*cc, 1.0), 1.8, 0.8 * a), (light, 2.4, 0.6 * a)):
+                    ctx.save()
+                    if pr["dashed"] and side == 1:
+                        ctx.set_dash([7, 9])     # 不愛者：斷續的同一個字
+                    ctx.push_group()
+                    ctx.new_path()
+                    path_polys(ctx, polys, close=draw >= 1)
+                    if isinstance(src, tuple):
+                        ctx.set_source_rgba(*src)
+                    else:
+                        ctx.set_source(src)
+                    ctx.set_line_width(width)
+                    ctx.stroke()
+                    ctx.pop_group_to_source()
+                    ctx.paint_with_alpha(alpha)
+                    ctx.restore()
         # 灰燼聚成的一叢字草
         ca = ease(ramp(t, c("witness") + 2.2, c("witness") + 3.0))
         if ca > 0:
@@ -369,6 +416,51 @@ class FieldScene:
                 fill_polys(ctx, polys, mix(pal["grass"], pal["light_warm"], 0.25), ca)
         over(img, lay.rgba())
         return img
+
+    def _build_impacts(self):
+        c = self.c
+        rng = rand(self.seed, 4, 12)
+        # (時間, 幅度 px, 軸, 衰減秒)
+        self.shakes = [(c("mud_land"), 13, 1, 0.22), (c("erupt"), 20, 1, 0.55), (c("restore"), 11, 0, 0.35)]
+        self.dust = []
+        for ev in self.events:
+            if ev["kind"] == "stomp":
+                self.shakes.append((ev["t"], 9, 1, 0.14))
+                n = 220
+                x = rng.uniform(ev["xc"] - ev["hw"], ev["xc"] + ev["hw"], n)
+                side = np.sign(x - ev["xc"] + 1e-3)
+                v = np.stack([side * rng.uniform(60, 560, n), -rng.uniform(40, 330, n)], 1)
+                self.dust.append(dict(t=ev["t"], p0=np.stack([x, -rng.uniform(0, 6, n)], 1), v=v,
+                                      life=rng.uniform(0.5, 1.6, n), w=rng.uniform(0.3, 1.0, n)))
+            else:
+                self.shakes.append((ev["t"], 3, 0, 0.1))
+
+    def shake(self, t):
+        dx = dy = 0.0
+        for t0, amp, axis, dec in self.shakes:
+            u = t - t0
+            if 0 <= u < dec * 5:
+                v = amp * np.exp(-u / dec) * np.sin(2 * np.pi * 11 * u + 0.4)
+                if axis:
+                    dy += v
+                else:
+                    dx += v
+        return dx, dy
+
+    def _draw_dust(self, img, t):
+        for d in self.dust:
+            u = t - d["t"]
+            if u < 0 or u > 1.7:
+                continue
+            k = 2.2
+            e = (1 - np.exp(-k * u)) / k
+            pos = d["p0"] + d["v"] * e + np.array([0, 420]) * u * u / 2
+            pos[:, 1] = np.minimum(pos[:, 1], 0)
+            a = np.clip(1 - u / d["life"], 0, 1) * d["w"]
+            sc = self.to_screen(pos, t)
+            buf = np.zeros_like(img)
+            splat(buf, sc, np.array([0.5, 0.42, 0.33], np.float32), a * 0.9)
+            img += buf + bloom(buf, 9, down=4) * 2.5
 
     def _build_events(self):
         tl = self.tl
@@ -498,7 +590,10 @@ class FieldScene:
         else:
             base = mix(0.03, 0.05, ramp(t, c("zoom_start"), c("zoom_end")))
         gust = noise3(x / 520, t * 0.35, 1.0, 11) * 0.8 + noise3(x / 160, t * 1.3, 2.0, 12) * 0.35
-        return base * (0.55 + gust)
+        # 一陣一陣的風由左向右掃過，每 4.5 秒一道
+        front = (t * 520) % 2340 - 210
+        wave = np.exp(-((x - front) / 230) ** 2) * (1.6 if t < c("breath") else 0.7)
+        return base * (0.55 + gust + wave)
 
     def advance_to(self, frame):
         while self.frame < frame:
@@ -509,7 +604,7 @@ class FieldScene:
         dt = self.dt
         c = self.c
         sing = c("sing") <= t < c("selflove") - 0.6
-        for p in self.plants:
+        for p in self.plants + self.fringe:
             if t < p.t_rise:
                 continue
             target = self.wind(t, p.x) * p.flex
@@ -532,7 +627,7 @@ class FieldScene:
         for ev in self.events:
             if ev["kind"] == "stomp" and not ev["done"] and t >= ev["t"]:
                 ev["done"] = True
-                for p in self.plants:
+                for p in self.plants + self.fringe:
                     d = abs(p.x - ev["xc"])
                     if d < ev["hw"] and t >= p.t_rise:
                         f = 1 - (d / ev["hw"]) ** 2
@@ -588,7 +683,9 @@ class FieldScene:
         self.pieces.append(dict(
             polys=[w - pivot for w in world], pos=pivot.astype(np.float64),
             vel=np.array([ev["dir"] * rng.uniform(250, 600), rng.uniform(-420, -150)]),
-            rot=0.0, spin=ev["dir"] * rng.uniform(2, 7), t=t, k=p.k))
+            rot=0.0, spin=ev["dir"] * rng.uniform(2, 7), t=t, k=p.k,
+            cut=np.array([p.x, -ev["hc"]]), dir=ev["dir"],
+            slivers=np.stack([ev["dir"] * rng.uniform(150, 900, 9), rng.uniform(-500, 120, 9)], 1)))
 
     # ── 灰燼 ─────────────────────────────────────────────
     def _spawn_ash(self, t):
@@ -708,7 +805,18 @@ class FieldScene:
     def _plant_polys(self, p, t):
         """回傳 (世界座標多邊形, 是否在吸收中的混合係數)。"""
         rise = ease_out(ramp(t, p.t_rise, p.t_rise + 2.2), 2)
-        polys = p.warp(p.local)
+        # 每一筆（輪廓）在整株的彎曲之外再各自顫動，像葉片
+        n = len(p.local)
+        if n:
+            ks = np.arange(n, dtype=np.float32)
+            still = 1.0 if p.absorb_t is None else 1 - ramp(t, p.absorb_t, p.absorb_t + 0.6)
+            amp = (0.05 + 0.25 * abs(p.omega) / 3) * still
+            d = amp * noise3(t * 2.6 + ks * 1.37, p.phase + ks * 0.7, 0.0, 300)
+            polys = []
+            for i, cont in enumerate(p.local):
+                polys += p.warp([cont], p.theta + float(d[i]))
+        else:
+            polys = []
         dy = (1 - rise) * p.h * 1.05 - p.uplift()
         polys = [q + (p.x, dy) for q in polys]
         m = 0.0
@@ -724,28 +832,36 @@ class FieldScene:
                                mix(q[:, 1], ty + (q[:, 1] - cy) * scale, m)], 1) for q in polys]
         return polys, m
 
-    def _draw_plants(self, ctx, t, mono=False, emissive=None):
+    DEPTH = {-1: 0.30, 0: 0.55, 1: 0.78, 2: 1.0}
+
+    def _draw_plants(self, ctx, t, mono=False, emissive=None, rows=(-1, 0, 1, 2)):
         pal = self.tl.pal
         c = self.c
-        tint_k = ease(ramp(t, c("blood") + 2, c("stomp_start") + 2)) * 0.30
+        tint_k = ease(ramp(t, c("blood") + 2, c("stomp_start") + 2))
+        warm_k = ease(ramp(t, c("selflove"), c("selflove") + 0.8)) if t >= c("selflove") else 0.0
+        haze = np.array([0.15, 0.125, 0.10])
         ctx.save()
         if t < c("zoom_start"):
             s, hz = self.camera(t)
             ctx.rectangle(0, 0, self.W, hz)
             ctx.clip()
-        for p in sorted(self.plants, key=lambda p: p.row):
+        pool = (self.fringe if -1 in rows else []) + [p for p in self.plants if p.row in rows]
+        fringe_fade = 1 - ease(ramp(t, c("grid_absorb"), c("grid_absorb") + 4))
+        for p in sorted(pool, key=lambda p: p.row):
             if t < p.t_rise:
                 continue
             polys, m = self._plant_polys(p, t)
             if not polys:
                 continue
             fade = 1.0
-            if p.cell is not None and p.cell["fill_t"] is not None:
+            if p.row < 0:
+                fade = fringe_fade
+            elif p.cell is not None and p.cell["fill_t"] is not None:
                 fade = 1 - ease(ramp(t, p.cell["fill_t"] - 0.2, p.cell["fill_t"] + 0.3))
             if fade <= 0:
                 continue
             scr = [self.to_screen(q, t) for q in polys]
-            depth = [0.55, 0.78, 1.0][p.row]
+            depth = self.DEPTH[p.row]
             if mono:
                 fill_polys(ctx, scr, (1, 1, 1), fade)
                 continue
@@ -755,13 +871,25 @@ class FieldScene:
                 if h > 0.01:
                     fill_polys(ctx, scr, pal["lava"], h * fade)
                 continue
-            col = mix(pal["grass"], pal["blood"] * 1.25, tint_k * p.tint)
-            col = mix(col, pal["grid"], m)
-            if t >= c("selflove"):
-                col = mix(col, pal["light_warm"], 0.25 * ease(ramp(t, c("selflove"), c("selflove") + 0.8))
-                          * (1 - m))
-            col = col * mix(0.32, 0.82, depth)
-            fill_polys(ctx, scr, col, fade)
+            base = mix(pal["grass"], pal["grid"], m)
+            base = mix(base, pal["light_warm"], 0.28 * warm_k * (1 - m))
+            # 根部暗、梢部亮；血從根往上染
+            root = base * 0.36
+            root = mix(root, pal["blood"] * 1.1, 0.75 * tint_k * p.tint * (1 - m))
+            midc = mix(base * 0.8, pal["blood"] * 1.3, 0.28 * tint_k * p.tint * (1 - m))
+            tip = base * (1.08 + 0.25 * warm_k)
+            k = mix(0.30, 0.86, depth)
+            stops = []
+            for off, col in ((0.0, root), (0.45, midc), (1.0, tip)):
+                col = mix(haze, col * k, 0.35 + 0.65 * depth)   # 越遠越溶進空氣
+                stops.append((off, col, fade))
+            s_, hz_ = self.camera(t)
+            r0 = self.to_screen(np.array([p.x, 0.0]), t)
+            r1 = r0 - (0, p.h * s_ * p.squash * p.cut_u)
+            if m > 0:
+                r0, r1 = r0 + (0, 1), r0 - (0, 1)
+                stops = [(0.0, base * k, fade), (1.0, base * k, fade)]
+            fill_polys_grad(ctx, scr, r0, r1, stops)
         ctx.restore()
 
     def _draw_roots(self, ctx, t):
@@ -772,7 +900,7 @@ class FieldScene:
                 continue
             rise = ease_out(ramp(t, p.t_rise, p.t_rise + 2.2), 2)
             up = p.uplift()
-            depth = [0.5, 0.75, 1.0][p.row]
+            depth = self.DEPTH[p.row]
             col = mix(pal["grass_dim"], pal["blood"] * 1.5, red * 0.8) * depth
             for r in p.roots:
                 q = r.copy()
@@ -783,7 +911,7 @@ class FieldScene:
                 ctx.new_path()
                 path_polys(ctx, [sc], close=False)
                 ctx.set_source_rgba(*[float(v) for v in col], 0.75 * rise)
-                ctx.set_line_width(1.1 + 0.6 * p.row)
+                ctx.set_line_width(1.1 + 0.6 * max(p.row, 0))
                 ctx.stroke()
                 # 血沿根往上流的光點
                 if red > 0:
@@ -794,12 +922,29 @@ class FieldScene:
                         ctx.set_source_rgba(0.75, 0.18, 0.12, 0.6 * red)
                         ctx.fill()
 
-    def _draw_pieces(self, ctx, t):
+    def _draw_pieces(self, ctx, t, glow_ctx=None):
         pal = self.tl.pal
         for pc in self.pieces:
             age = t - pc["t"]
             if age < 0:
                 continue
+            if age < 0.5:
+                # 刀過之處：一點冷光與幾片飛出去的碎屑
+                c0 = self.to_screen(pc["cut"], t)
+                fa = 1 - age / 0.5
+                for v in pc["slivers"]:
+                    q0 = pc["cut"] + v * age + np.array([0, 800]) * age * age / 2
+                    q1 = q0 - v * 0.018
+                    a, b = self.to_screen(q0, t), self.to_screen(q1, t)
+                    ctx.move_to(*a)
+                    ctx.line_to(*b)
+                    ctx.set_source_rgba(0.88, 0.9, 0.86, 0.8 * fa)
+                    ctx.set_line_width(1.3)
+                    ctx.stroke()
+                if glow_ctx is not None and age < 0.18:
+                    glow_ctx.arc(float(c0[0]), float(c0[1]), 10, 0, 2 * np.pi)
+                    glow_ctx.set_source_rgba(0.8, 0.86, 0.9, 1 - age / 0.18)
+                    glow_ctx.fill()
             a = 1 - ease(ramp(age, 0.5, 1.6))
             if a <= 0:
                 continue
@@ -809,50 +954,73 @@ class FieldScene:
             scr = [self.to_screen(q, t) for q in polys]
             fill_polys(ctx, scr, pal["grass"] * 0.75, a)
 
+    def _stomp_y(self, u):
+        if u < 0:
+            return mix(-900, -14, ease_in(ramp(u, -0.2, 0.0), 2))
+        if u < 0.1:
+            return -14
+        return mix(-14, -900, ease(ramp(u, 0.1, 0.42)))
+
     def _draw_stomp(self, ctx, t):
-        s, hz = self.camera(t)
         for ev in self.events:
             if ev["kind"] != "stomp":
                 continue
             u = t - ev["t"]
             if u < -0.2 or u > 0.42:
                 continue
-            if u < 0:
-                yb = mix(-900, -14, ease_in(ramp(u, -0.2, 0.0), 2))
-            elif u < 0.1:
-                yb = -14
-            else:
-                yb = mix(-14, -900, ease(ramp(u, 0.1, 0.42)))
-            a = 0.92
             x0, x1 = ev["xc"] - ev["hw"] * 1.25, ev["xc"] + ev["hw"] * 1.25
-            # 巨大平面：下緣銳利，往上溶進黑暗
-            sk = 60
-            quad = np.array([[x0 - sk, yb - 700], [x1 + sk, yb - 700], [x1, yb], [x0, yb]])
-            sc = self.to_screen(quad, t)
-            grad = cairo.LinearGradient(0, float(sc[0, 1]), 0, float(sc[2, 1]))
-            grad.add_color_stop_rgba(0, 0.03, 0.026, 0.022, 0)
-            grad.add_color_stop_rgba(0.7, 0.04, 0.035, 0.03, a * 0.8)
-            grad.add_color_stop_rgba(1, 0.06, 0.052, 0.045, a)
-            ctx.new_path()
-            path_polys(ctx, [sc])
-            ctx.set_source(grad)
-            ctx.fill()
-            # 下緣一道冷光的稜
-            ctx.new_path()
-            ctx.move_to(float(sc[3, 0]), float(sc[3, 1]))
-            ctx.line_to(float(sc[2, 0]), float(sc[2, 1]))
-            ctx.set_source_rgba(0.55, 0.52, 0.47, 0.35)
-            ctx.set_line_width(1.4)
-            ctx.stroke()
-            # 落下前地面先被它的陰影壓暗
-            shade = 0.55 * ease(ramp(u, -0.2, 0.0)) if u < 0.1 else 0.55 * (1 - ease(ramp(u, 0.1, 0.42)))
-            g0 = self.to_screen(np.array([[x0, -400], [x1, 0]]), t)
+            # 地面先被它的陰影壓暗
+            shade = 0.6 * ease(ramp(u, -0.2, 0.0)) if u < 0.1 else 0.6 * (1 - ease(ramp(u, 0.1, 0.42)))
+            g0 = self.to_screen(np.array([[x0 - 120, -500], [x1 + 120, 0]]), t)
             ctx.rectangle(float(g0[0, 0]), float(g0[0, 1]), float(g0[1, 0] - g0[0, 0]), float(g0[1, 1] - g0[0, 1]))
             g2 = cairo.LinearGradient(0, float(g0[0, 1]), 0, float(g0[1, 1]))
             g2.add_color_stop_rgba(0, 0, 0, 0, 0)
             g2.add_color_stop_rgba(1, 0, 0, 0, shade)
             ctx.set_source(g2)
             ctx.fill()
+            # 巨大的口號印版：本體往上、往兩側溶進黑暗；下落時疊印出動態模糊
+            taps = 6
+            gtxt = self.tl.raw["grid"]["text"]
+            for k in range(taps):
+                yb = self._stomp_y(u - k * 0.012)
+                a = 0.96 if k == 0 else 0.35 / taps
+                q = self.to_screen(np.array([[x0, yb - 900], [x1, yb]]), t)
+                (sx0, sy0), (sx1, sy1) = q
+                body = cairo.LinearGradient(0, sy0, 0, sy1)
+                body.add_color_stop_rgba(0, 0.02, 0.018, 0.016, 0)
+                body.add_color_stop_rgba(0.55, 0.035, 0.031, 0.028, a * 0.85)
+                body.add_color_stop_rgba(1, 0.07, 0.062, 0.055, a)
+                edge = cairo.LinearGradient(sx0 - 40, 0, sx1 + 40, 0)
+                edge.add_color_stop_rgba(0, 0, 0, 0, 0)
+                edge.add_color_stop_rgba(0.12, 0, 0, 0, 1)
+                edge.add_color_stop_rgba(0.88, 0, 0, 0, 1)
+                edge.add_color_stop_rgba(1, 0, 0, 0, 0)
+                ctx.save()
+                ctx.rectangle(sx0 - 40, sy0, sx1 - sx0 + 80, sy1 - sy0)
+                ctx.clip()
+                ctx.set_source(body)
+                ctx.mask(edge)
+                ctx.restore()
+            # 印面：一條透視的亮帶，上面凸起反寫的標語字
+            yb = self._stomp_y(u)
+            band = self.to_screen(np.array([[x0 + 30, yb - 20], [x1 - 30, yb - 20], [x1 + 20, yb], [x0 - 20, yb]]), t)
+            ctx.new_path()
+            path_polys(ctx, [band])
+            face = cairo.LinearGradient(0, float(band[0, 1]), 0, float(band[2, 1]))
+            face.add_color_stop_rgba(0, 0.10, 0.09, 0.08, 0.95)
+            face.add_color_stop_rgba(1, 0.22, 0.2, 0.17, 0.95)
+            ctx.set_source(face)
+            ctx.fill()
+            n = int((x1 - x0) / 34)
+            for j in range(n):
+                cxw = x0 + (j + 0.5) * (x1 - x0) / n
+                sc = self.to_screen(np.array([cxw, yb - 9]), t)
+                ch = gtxt[(j + int(ev["xc"])) % len(gtxt)]
+                ctx.save()
+                ctx.translate(float(sc[0]), float(sc[1]))
+                ctx.scale(-1, 0.42)   # 印版上的字是反的，而且被透視壓扁
+                self._blit_char(ctx, ch, 0, 0, 30, (0.04, 0.035, 0.03), 0.9)
+                ctx.restore()
 
     def _draw_blades(self, ctx, glow_ctx, t):
         for ev in self.events:
@@ -904,17 +1072,26 @@ class FieldScene:
         c = self.c
         s, hz = self.camera(t)
         calm = ease(ramp(t, c("breath"), c("breath") + 1.5)) * (1 - ease(ramp(t, c("selflove"), c("selflove") + 3)))
-        top = mix(np.array([0.045, 0.038, 0.032]), np.array([0.13, 0.11, 0.09]), calm)
-        near = mix(np.array([0.11, 0.09, 0.07]), np.array([0.24, 0.20, 0.155]), calm)
+        top = mix(np.array([0.040, 0.034, 0.030]), np.array([0.12, 0.105, 0.088]), calm)
+        near = mix(np.array([0.12, 0.095, 0.072]), np.array([0.27, 0.22, 0.165]), calm)
         hzf = hz / self.H
-        img = lin_gradient_v(self.H, self.W, [(0, top), (hzf, near), (min(hzf + 0.002, 1), pal["soil"]),
-                                               (1, pal["soil_deep"])])
-        if t < c("mud_land") + 0.7:
-            spread = 960 * 1.15 * ease_out(ramp(t, c("mud_land"), c("mud_land") + 0.6), 3)
-            sky = lin_gradient_v(self.H, self.W, [(0, top), (hzf, near), (1, near * 0.85)])
-            xs = np.abs(np.arange(self.W) - 960)
-            m = np.clip((xs - spread) / 90 + 0.5, 0, 1)[None, :, None]
-            img = mix(img, sky, m).astype(np.float32)
+        img = lin_gradient_v(self.H, self.W, [(0, top), (hzf * 0.8, near * 0.8), (hzf, near), (1, near)])
+        # 雲霧：讓天空有空氣感
+        cloud = self.sky.field(t, 9.0 if t < c("breath") else 4.0)
+        img *= (0.78 + 0.45 * cloud)[..., None]
+        # 地平線上一道低低的光
+        ys = np.arange(self.H, dtype=np.float32)
+        glow = np.exp(-((ys - hz) / (90 * s + 30)) ** 2)[:, None, None]
+        img += glow * np.array([0.10, 0.075, 0.05], np.float32) * (0.6 + 0.8 * calm)
+        soil, h0 = self.soil.view(s, hz, self.W, self.H)
+        if soil is not None:
+            if t < c("mud_land") + 0.7:
+                spread = 960 * 1.15 * ease_out(ramp(t, c("mud_land"), c("mud_land") + 0.6), 3)
+                xs = np.abs(np.arange(self.W) - 960)
+                m = np.clip((xs - spread) / 90 + 0.5, 0, 1)[None, :, None]
+                img[h0:] = mix(soil, img[h0:], m)
+            else:
+                img[h0:] = soil
         return img
 
     def _underground(self, img, t):
@@ -962,6 +1139,7 @@ class FieldScene:
         return f
 
     def _lava(self, t):
+        """回傳 (mul, add, heat)：煙的遮蔽、熔岩與火光、熱浪強度（皆為整張畫面）。"""
         c = self.c
         te = min(t, c("freeze"))
         u = te - c("erupt")
@@ -969,24 +1147,53 @@ class FieldScene:
             return None
         if self.lava_cache is not None and self.lava_cache[0] == te:
             return self.lava_cache[1]
-        w, h = 320, 180
-        xs = np.linspace(0, 1, w)[None, :]
-        ys = np.linspace(0, 1, h)[:, None]
-        height = 0.95 * ease_out(ramp(u, 0.0, 1.0), 2) - 0.62 * ease_out(ramp(u, 1.0, 8), 2)
-        wx = xs * 3.2 + 0.35 * fbm(xs * 2, ys * 2 - te * 0.7, te * 0.3, 3, 71)
-        wy = ys * 2.4 + 0.35 * fbm(xs * 2 + 5, ys * 2 - te * 0.7, te * 0.3, 3, 72)
-        n = fbm(wx * 1.6, wy * 1.6 + te * 1.8, te * 0.5, 4, 73)
-        v = (ys - (1 - height)) * 2.2 + 0.55 * n
-        inten = np.clip(v, 0, 1) * mix(0.78, 0.5, ease(ramp(u, 0.4, 10)))
         pal = self.tl.pal
-        stops = [(0, np.zeros(3)), (0.25, pal["blood"] * 0.9), (0.55, pal["lava"] * 0.9),
-                 (0.85, pal["lava"]), (1.0, pal["ember"] * 0.9)]
-        rgb = np.zeros((h, w, 3), np.float32)
+        w, h = 480, 270
+        xs = np.linspace(0, 1, w, dtype=np.float32)[None, :] * 1.78
+        ys = np.linspace(0, 1, h, dtype=np.float32)[:, None]
+        height = 0.95 * ease_out(ramp(u, 0.0, 1.0), 2) - 0.6 * ease_out(ramp(u, 1.0, 8), 2)
+        surf = 1 - height + 0.06 * fbm(xs * 3, te * 0.4, 0.0, 3, 70)
+        below = ys - surf
+        # 地殼與裂縫：ridged noise，裂縫隨時間緩慢流動
+        wx = xs * 3 + 0.3 * fbm(xs * 2, ys * 2 - te * 0.25, te * 0.2, 3, 71)
+        wy = ys * 3 + 0.3 * fbm(xs * 2 + 5, ys * 2, te * 0.2, 3, 72)
+        ridge = 1 - np.abs(fbm(wx * 2.2, wy * 2.2, te * 0.15, 4, 73))
+        crack = np.clip((ridge - 0.86) / 0.13, 0, 1) ** 2
+        fine = np.clip((1 - np.abs(fbm(wx * 7, wy * 7, te * 0.3, 2, 74)) - 0.9) / 0.1, 0, 1) ** 2
+        energy = mix(1.0, 0.45, ease(ramp(u, 0.6, 12)))
+        inside = np.clip(below * 40 + 0.5, 0, 1)
+        rim = np.exp(-(below / 0.025) ** 2)
+        heatv = (crack * 1.15 + fine * 0.35 + 0.05 + rim * 0.8) * energy
+        lava = np.zeros((h, w, 3), np.float32)
+        stops = [(0, np.array([0.05, 0.02, 0.012])), (0.25, pal["blood"] * 0.9), (0.6, pal["lava"]),
+                 (1.0, pal["ember"]), (1.6, np.array([1.0, 0.92, 0.75]))]
         for ci in range(3):
-            rgb[..., ci] = np.interp(inten, [s_[0] for s_ in stops], [s_[1][ci] for s_ in stops])
-        up = resize(rgb, self.W, self.H)
-        self.lava_cache = (te, up)
-        return up
+            lava[..., ci] = np.interp(heatv, [q[0] for q in stops], [q[1][ci] for q in stops])
+        crust = np.array([0.045, 0.02, 0.012], np.float32)
+        lava = mix(crust, lava, np.clip(heatv * 1.4, 0, 1)[..., None])
+        # 煙：從表面升起，底下被火照亮
+        above = np.clip(-below, 0, 1)
+        smoke = np.clip(fbm(xs * 2.2, ys * 2.6 + te * 0.9, te * 0.25, 4, 75) * 1.4 + 0.25, 0, 1)
+        smoke *= np.exp(-above / 0.45) * ease(ramp(u, 0.1, 1.2))
+        firelight = np.exp(-above / 0.18) * energy
+        mul = (1 - inside) * (1 - 0.65 * smoke) + 0
+        add = lava * inside[..., None] + (firelight * (1 - inside))[..., None] * pal["lava"] * 0.55 \
+            + (smoke * firelight)[..., None] * pal["ember"] * 0.25
+        heat = np.exp(-np.clip(-below, 0, None) / 0.3) * (1 - inside) * energy
+        out = (resize(mul[..., None], self.W, self.H), resize(add, self.W, self.H),
+               resize(heat[..., None], self.W, self.H)[..., 0])
+        self.lava_cache = (te, out)
+        return out
+
+    def _shimmer(self, img, heat, t):
+        """熱浪：依熱度把每一列像素橫向擾動幾個像素。"""
+        te = min(t, self.c("freeze"))
+        w, h = 240, 135
+        X, Y = np.meshgrid(np.linspace(0, 24, w), np.linspace(0, 14, h))
+        d = noise3(X, Y + te * 3.5, te * 1.3, 77)
+        d = resize(d[..., None].astype(np.float32), self.W, self.H)[..., 0] * 5.0 * heat
+        xi = np.clip(np.arange(self.W)[None, :] + d.astype(np.int32), 0, self.W - 1)
+        return np.take_along_axis(img, np.broadcast_to(xi[..., None], img.shape), axis=1)
 
     def _draw_ash(self, img, t):
         a = self.ash
@@ -1027,7 +1234,9 @@ class FieldScene:
     def subtitle_backing(self, t):
         """網格出現後字幕底下需要一條柔和的暗帶。"""
         c = self.c
-        return ease(ramp(t, c("grid_in"), c("grid_in") + 2)) * (1 - ease(ramp(t, c("erupt"), c("erupt") + 0.5)))
+        grid = ease(ramp(t, c("grid_in"), c("grid_in") + 2)) * (1 - ease(ramp(t, c("erupt"), c("erupt") + 0.5)))
+        lava = ease(ramp(t, c("erupt") + 0.3, c("erupt") + 1.0)) * (1 - ease(ramp(t, c("hush"), c("hush") + 1.6)))
+        return max(grid, lava)
 
     def render(self, frame):
         t = frame / self.fps
@@ -1060,14 +1269,30 @@ class FieldScene:
             self._draw_grid(ctx, t)
             self._draw_mud_land(ctx, t)
             self._draw_tree(ctx, t)
-            self._draw_plants(ctx, t)
+            if t < c("fire_rise"):
+                far = self.far
+                far.clear()
+                self._draw_plants(far.ctx, t, rows=(-1, 0))
+                fr = far.rgba()
+                blur_k = 1 - ease(ramp(t, c("zoom_start"), c("zoom_end")))
+                if fr[..., 3].max() > 0:
+                    fb = bloom(fr, 3.2 * blur_k + 0.01, down=2)
+                    over(img, lay.rgba())
+                    lay.clear()
+                    over(img, fb)
+                self._draw_plants(ctx, t, rows=(1, 2))
+            else:
+                self._draw_plants(ctx, t)
             ctx.save()
             ctx.rectangle(0, 0, self.W, hz)
             ctx.clip()
-            self._draw_pieces(ctx, t)
+            self._draw_pieces(ctx, t, glow.ctx)
             ctx.restore()
             self._draw_stomp(ctx, t)
             self._draw_blades(ctx, glow.ctx, t)
+            over(img, lay.rgba())
+            lay.clear()
+            self._draw_dust(img, t)
             heat = self._heat(t)
             if heat is not None:
                 self._draw_grid(glow.ctx, t, emissive=heat)
@@ -1088,6 +1313,16 @@ class FieldScene:
                     glow.ctx.set_source_rgba(*[float(v) for v in pal["lava"]], 0.55 * h * gk)
                     glow.ctx.set_line_width(1.2)
                     glow.ctx.stroke()
+            # 空氣中的塵：第 5 段的明亮安靜裡最清楚
+            mk = (0.5 * ramp(t, c("grass_rise"), c("grass_rise") + 4)
+                  + 0.9 * calm_k(t, c)) * (1 - ease(ramp(t, c("zoom_start"), c("fire_rise"))) * 0.8)
+            over(img, lay.rgba())
+            lay.clear()
+            self.motes.draw(img, t, mk, wind=1.8 if t < c("breath") else 0.6)
+            rk = calm_k(t, c) + 0.6 * ease(ramp(t, c("selflove"), c("selflove") + 1)) * (1 - ease(ramp(t, c("zoom_start"), c("zoom_end"))))
+            r = atmos.rays(self.W, self.H, t, rk, pal["light_warm"])
+            if r is not None:
+                img += r
             if t >= c("selflove"):
                 # 「自愛」：一道暖光照著字草
                 k = ease(ramp(t, c("selflove"), c("selflove") + 0.8)) * (1 - 0.6 * ease(ramp(t, c("zoom_start"), c("zoom_end"))))
@@ -1115,7 +1350,12 @@ class FieldScene:
             if t >= c("hush"):
                 hushk = 1 - ease(ramp(t, c("hush"), c("hush") + 1.6))
             if lava is not None:
-                img += lava * hushk
+                mul, add, heat = lava
+                # 凍結之後，熔岩慢慢冷成暗紅（顏色在變，形狀不動）
+                cool = 1 - 0.45 * ease(ramp(t, c("freeze"), c("hush")))
+                img = img * mix(1.0, mul, hushk) + add * hushk * cool
+                if t < c("freeze"):
+                    img = self._shimmer(img, heat, t)
             flash = np.exp(-max(0.0, t - c("erupt")) / 0.12) if t >= c("erupt") else 0
             img += flash * np.array([1.0, 0.8, 0.55], np.float32) * 0.45
             if self.ash is not None:
@@ -1134,4 +1374,7 @@ class FieldScene:
             base = np.array([0.05, 0.04, 0.035], np.float32)
             img = self._render_witness(np.broadcast_to(base, img.shape).copy(), t)
             img += np.clip(ash_layer - base, 0, None)
+        dx, dy = self.shake(t)
+        if abs(dx) >= 0.5 or abs(dy) >= 0.5:
+            img = shift(img, int(round(dx)), int(round(dy)))
         return img
