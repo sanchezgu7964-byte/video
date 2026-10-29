@@ -68,8 +68,8 @@ class Edit:
         self._end = end_scene
         for b in raw.get("burst", []):
             gen = getattr(self, "_burst_" + b["type"])
-            new = gen(b)
             lo, hi = b["start"], b["end"]
+            new = [s_ for s_ in gen(b) if s_.t0 < hi - 1e-6]     # 鏡頭串不越過自己的區間
             shots = [s for s in shots if not (lo <= s.t0 < hi)] + new
         # 剪接點對齊到格；同一格上有兩個鏡頭時，後寫的那個算數
         fps = tl.fps
