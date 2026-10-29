@@ -26,8 +26,8 @@ SECTIONS = [  # (標題, 起點 cue 或秒數, 一句說明)
 
 
 INSERTS = {"iron_house": "鐵屋子", "mouth": "嘴", "candle": "燭", "grass_crack": "石縫的草", "roots_bones": "根與骨",
-           "boots": "靴", "onlookers": "看客", "gate": "牌坊", "calendar": "日曆", "bars": "牢窗",
-           "lamp_window": "白雲樓的燈"}
+           "boots": "靴", "onlookers": "看客", "gate": "節烈牌坊", "calendar": "日曆", "bars": "牢窗",
+           "lamp_window": "燈下寫字的人", "petition": "公車上書的呈文", "leaflet": "北京學界全體宣言", "tou": "「頭」"}
 
 
 def size_name(z):
@@ -58,7 +58,7 @@ def main():
            f"{len(edit.shots)} 個鏡頭", "",
            "> 由 `make_storyboard.py` 依 `config/timeline.toml` 與 `config/edit.toml` 產生；改了剪輯之後重新執行即可。",
            "> 景別依虛擬攝影機的放大倍數：全景 <1.25×、中景 <1.9×、近景 <2.7×、特寫 <3.6×、大特寫 ≥3.6×。",
-           "> 「意象」是木刻版畫風格的插入鏡頭（ycf/inserts.py），括號裡是它播到的進度。", "",
+           "> 「意象」是刻版的插入鏡頭（ycf/plates.py、ycf/plates2.py），括號裡是它播到的進度；「頭」是字草世界裡的那一株。", "",
            "## 結構總表", "", "| 段落 | 開始 | 長度 | 鏡頭數 | 平均鏡頭長 | 內容 |", "|---|---|---|---|---|---|"]
     for (name, _, desc), a, b in zip(SECTIONS, starts, ends):
         n = sum(1 for s in edit.shots if a <= s.t0 < b)
@@ -79,7 +79,7 @@ def main():
             if s.kind == "insert":
                 name = INSERTS.get(s.insert, s.insert)
                 if s.insert == "crowd":
-                    name = {"surge": "人潮", "formation": "方陣", "empty": "空廣場"}[s.kw.get("variant", "surge")]
+                    name = {"surge": "五四的橫幅", "formation": "被收編的方陣", "empty": "散場的街"}[s.kw.get("variant", "surge")]
                 pp = f"{s.p[0]:.2f}" if s.p[0] == s.p[1] else f"{s.p[0]:.2f}→{s.p[1]:.2f}"
                 kind += f"：{name}（{pp}）"
             if s.kind == "scene":

@@ -7,11 +7,13 @@
 # mute = true：這個鏡頭連聲音也切掉。tick = true：剪接點上一聲極短的切音（意象鏡頭預設有）。
 # 每個鏡頭一直持續到下一個鏡頭開始。[[burst]] 依場景資料生成鏡頭串，區間內的明確鏡頭會被取代。
 #
-# 意象（ycf/inserts.py）：
-#   iron_house 鐵屋子與熟睡的人／mouth 張開而空的嘴／candle 熄滅的燭／grass_crack 石縫裡鑽出的草
-#   roots_bones 穿過骨頭吸血的根／boots 行進的靴／onlookers 伸長脖子的看客
-#   crowd（surge 人潮與紅旗／formation 一模一樣的方陣／empty 散場後的廣場）
-#   gate 坍塌的節烈牌坊／calendar 撕下的日曆／bars 牢窗／lamp_window 白雲樓上夜裡的燈
+# 意象（刻版：ycf/plates.py、ycf/plates2.py；接口 ycf/inserts.py）。意象鏡頭也可以給 view / to 取景：
+#   iron_house 鐵屋子，人挨著人睡，中間一個醒來／mouth 張開而空的嘴／candle 熄滅的燭
+#   grass_crack 石縫裡鑽出的草／roots_bones 穿過骨頭的根／boots 打綁腿的兵在行進／onlookers 伸長脖子的看客
+#   crowd（surge＝1919 年 5 月 4 日的白布橫幅／formation＝被收編的方陣／empty＝散場後的街）
+#   gate 坍塌的節烈牌坊／calendar 撕下的日曆（每頁一個日子）／bars 牢窗／lamp_window 白雲樓上燈下寫字的人
+#   petition 1895 年聯名的呈文／leaflet 被踩進泥裡的《北京學界全體宣言》
+#   tou 字草世界裡的「頭」：從埋著那張傳單的土裡長出來（p＝它自己的 13 秒；burn = "ramp" 讓地火燒上來）
 
 # 閃回用的畫面：渲染前先在這些時刻各拍一張全景（out/cache/recall_NN.png）
 [recall]
@@ -28,8 +30,10 @@ label = "黑中極密的微粒（大特寫）"
 [[shot]]
 at = 5.0
 insert = "iron_house"
-p = [0.05, 0.3]
-label = "鐵屋子：熟睡的人"
+p = [0.0, 0.12]
+view = [1.0, 960, 540]
+to = [1.06, 960, 600]
+label = "鐵屋子：人挨著人睡，頭垂在胸前"
 [[shot]]
 at = 7.4
 label = "充實的黑"
@@ -64,8 +68,9 @@ label = "全景"
 [[shot]]
 at = 19.3
 insert = "iron_house"
-p = 0.5
-label = "鐵屋子"
+p = [0.32, 0.4]
+view = [3.1, 1215, 670]
+label = "鐵屋子：中間那一個睜開了眼"
 [[shot]]
 at = 19.9
 view = [5.0, 960, 470]
@@ -86,8 +91,9 @@ label = "裂開：微粒洩出"
 [[shot]]
 at = 22.8
 insert = "iron_house"
-p = [0.85, 1.0]
-label = "鐵屋子裂開一道光"
+p = [0.8, 1.0]
+view = [1.12, 1000, 600]
+label = "鐵屋子：他抬起頭"
 [[shot]]
 at = 22.93
 label = "洩出"
@@ -207,30 +213,25 @@ at = 47.8
 label = "字從土裡冒出"
 [[shot]]
 at = 49.1
-insert = "grass_crack"
-p = [0.45, 0.95]
-label = "石縫裡的草"
+insert = "tou"
+p = [0.105, 0.38]
+label = "一株「頭」：從埋著那張傳單的土裡長出來，根往下找"
 [[shot]]
-at = 50.1
-view = [2.0, 1200, 600]
-to = [2.2, 1180, 610]
-label = "然而吸取露，吸取水"
+at = 52.7
+insert = "petition"
+p = [0.3, 0.8]
+view = [1.0, 960, 540]
+to = [1.12, 1040, 520]
+label = "一八九五：各省舉人聯名的呈文，一個一個簽上去的名字"
 [[shot]]
-at = 52.0
-view = [3.0, 1200, 800]
-to = [3.4, 1190, 790]
-label = "根把地底的血吸上來"
-[[burst]]
-type = "names"
-start = 53.0
-end = 56.0
-count = 3
-hold = 0.4
-back = [3.0, 1200, 800]
+at = 54.2
+insert = "tou"
+p = [0.42, 0.6]
+label = "根找到紙上的墨，血沿根往上"
 [[shot]]
-at = 56.0
+at = 56.4
 insert = "roots_bones"
-p = [0.45, 1.0]
+p = [0.5, 1.0]
 label = "陳死人的血和肉"
 [[shot]]
 at = 57.2
@@ -246,7 +247,36 @@ label = "田野"
 [[burst]]
 type = "stomps"
 start = 62.3
-end = 77.0
+end = 69.0
+[[shot]]
+at = 69.0
+insert = "leaflet"
+p = [0.12, 0.36]
+view = [1.0, 960, 540]
+to = [1.18, 900, 560]
+label = "《北京學界全體宣言》掉在泥地上"
+[[shot]]
+at = 70.5
+insert = "leaflet"
+p = [0.38, 0.56]
+view = [1.18, 900, 560]
+label = "靴的影子壓下來"
+[[shot]]
+at = 71.0
+kind = "black"
+label = "（落下）"
+[[shot]]
+at = 71.13
+insert = "leaflet"
+p = 0.9
+view = [1.28, 900, 500]
+to = [1.36, 870, 530]
+label = "帶鞋釘的泥印：只剩「中國的人民可以殺戮而不可」"
+[[shot]]
+at = 73.5
+insert = "tou"
+p = [0.6, 0.9]
+label = "靴又落下：「頭」斷了一筆，撐住"
 [[shot]]
 at = 77.0
 label = "直至於死亡而朽腐"
@@ -317,8 +347,8 @@ label = "光從網格底下透出"
 at = 114.6
 insert = "crowd"
 variant = "surge"
-beat = "sync"
-label = "人潮：搖旗吶喊"
+p = [0.0, 0.3]
+label = "一九一九：白布橫幅，仰著臉喊的學生"
 [[shot]]
 at = 115.4
 label = "全景"
@@ -326,8 +356,10 @@ label = "全景"
 at = 116.4
 insert = "crowd"
 variant = "surge"
-beat = "sync"
-label = "人潮"
+p = [0.3, 0.4]
+view = [1.75, 620, 310]
+to = [1.75, 900, 305]
+label = "外爭主權"
 [[shot]]
 at = 116.85
 view = [3.4, 960, 820]
@@ -337,8 +369,9 @@ label = "從字的內部透出"
 at = 118.4
 insert = "crowd"
 variant = "surge"
-beat = "sync"
-label = "人潮"
+p = 0.45
+view = [2.4, 1390, 430]
+label = "舉起的拳"
 [[shot]]
 at = 118.7
 view = [3.8, 960, 820]
@@ -350,8 +383,9 @@ label = "全景"
 at = 120.0
 insert = "crowd"
 variant = "surge"
-beat = "sync"
-label = "人潮"
+p = 0.5
+view = [2.0, 900, 700]
+label = "喊的臉"
 [[shot]]
 at = 120.2
 label = "全景"
@@ -359,8 +393,8 @@ label = "全景"
 at = 120.6
 insert = "crowd"
 variant = "surge"
-beat = "sync"
-label = "人潮"
+p = 0.55
+label = "橫幅"
 [[shot]]
 at = 120.73
 label = "全景"
@@ -408,7 +442,10 @@ to = [2.6, 760, 920]
 label = "熔岩的裂縫"
 [[shot]]
 at = 132.4
-label = "全景"
+insert = "tou"
+p = 0.96
+burn = "ramp"
+label = "「頭」也燒起來"
 [[shot]]
 at = 133.8
 insert = "grass_crack"
@@ -494,8 +531,8 @@ label = "天地即不如此靜穆：灰燼翻騰"
 at = 158.3
 insert = "crowd"
 variant = "surge"
-beat = "sync"
-label = "人潮又起"
+p = 0.6
+label = "橫幅又舉起來"
 [[shot]]
 at = 158.6
 label = "全景"

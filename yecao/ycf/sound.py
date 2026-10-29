@@ -466,9 +466,10 @@ def insert_sound(name, dur, shot, tl, rng):
         out += tone([55.0, 83.2, 131.0, 197.5], dur, [1, 0.6, 0.4, 0.25], detune=0.004, rng=rng) * 0.18
         out += filt(white(rng, n), "bandpass", [200, 900]) * 0.03
         if shot.p[1] > 0.8:
-            k = int(max(0.0, (0.85 - shot.p[0]) / max(shot.p[1] - shot.p[0], 1e-3)) * n)
-            cr = crackle(rng, dur, 900, 400, 8000, 1.0) * env_ad(n, 0.001, 0.15)
-            out[k:] += cr[: n - k] * 0.8
+            # 他抬起頭：鐵板一聲悶響
+            m = min(n, int(1.2 * SR))
+            src = (np.sin(2 * np.pi * np.cumsum(np.full(m, 74.0)) / SR) > 0.6).astype(np.float32)
+            out[:m] += filt(src, "bandpass", [610, 670]) * np.sin(np.pi * np.linspace(0, 1, m)) * 0.25
     elif name == "mouth":
         out += sweep_filter(white(rng, n), "lowpass", np.geomspace(600, 3500, n)) * np.linspace(0.02, 0.18, n)
     elif name == "candle":
@@ -491,30 +492,38 @@ def insert_sound(name, dur, shot, tl, rng):
         out[i0:] += th[: n - i0]
         out += filt(white(rng, n), "bandpass", [800, 4000]) * env_ad(n, 0.001, 0.05) * 0.2
     elif name == "onlookers":
-        mur = sum(filt(white(rng, n), "bandpass", [f * 0.85, f * 1.15]) * (0.5 + 0.5 * np.sin(2 * np.pi * rng.uniform(2, 5) * t + rng.uniform(0, 6)))
-                  for f in (320, 520, 760))
-        out += mur * 0.12
+        # 講堂：幻燈機換片的卡嗒，然後一陣掌聲（不用人聲）
+        out += filt(pink(rng, n), "bandpass", [120, 900]) * 0.02
+        for dt_, f_ in ((0.02, 950), (0.08, 380)):
+            kk = knock(rng, f_, 0.12, 0.5) * 0.35
+            i0 = int(dt_ * SR)
+            out[i0:i0 + len(kk)] += kk[: max(0, n - i0)]
+        if dur > 0.6:
+            m = n - int(0.3 * SR)
+            if m > 0:
+                out[int(0.3 * SR):] += crackle(rng, m / SR, 480, 700, 6500, 0.9)[:m]
     elif name == "crowd":
         v = kw.get("variant", "surge")
         if v == "empty":
             out += sweep_filter(pink(rng, n), "lowpass", 300 + 400 * np.sin(np.linspace(0, 3, n)) ** 2) * 0.1
+        elif v == "surge":
+            # 街頭：風、布被吹得劈啪、許多人的腳步（不用人聲）
+            out += filt(white(rng, n), "bandpass", [200, 1800]) * 0.06
+            flap = np.clip(np.sin(2 * np.pi * 1.25 * t) * 1.8 - 0.6, 0, 1) ** 2
+            out += filt(white(rng, n), "bandpass", [300, 2600]) * flap * 0.3
+            for k in range(int(dur * 12) + 1):
+                st = thud(rng, 90, 60, 0.12, 0.3, 0.8) * 0.35
+                i0 = int(rng.uniform(0, max(n - 1, 1)))
+                out[i0:i0 + len(st)] += st[: n - i0]
         else:
-            syl = 4.5 if v == "surge" else 0.0
-            roar = sum(filt(pink(rng, n), "bandpass", [f * 0.7, f * 1.3]) for f in (420, 900, 1800))
-            am = 0.6 + 0.4 * np.sin(2 * np.pi * syl * t) if syl else 0.25
-            out += roar * am * (1.8 if v == "surge" else 0.8)
-            # 口號：落在拍上的齊聲吶喊（方陣是機械的整齊；人潮是參差的）
+            # 方陣：腳步與鼓，全落在拍上，機械地整齊
             for b in tl.beats_between(shot.t0 - 0.3, shot.t1):
                 i0 = int((b - shot.t0) * SR)
-                for j in range(1 if v == "formation" else 3):
-                    jit = 0 if v == "formation" else int(rng.uniform(-0.04, 0.04) * SR)
-                    ch = filt(white(rng, int(0.22 * SR)), "bandpass", [500, 1600]) * env_ad(int(0.22 * SR), 0.01, 0.07)
-                    k0 = i0 + jit
-                    if 0 <= k0 < n:
-                        out[k0:k0 + len(ch)] += ch[: n - k0] * (3.2 if v == "formation" else 1.8)
-                if v == "formation" and 0 <= i0 < n:
+                if 0 <= i0 < n:
                     dr = thud(rng, 90, 60, 0.25, 1.0, 0.4)
                     out[i0:i0 + len(dr)] += dr[: n - i0] * 1.3
+                    st = crackle(rng, 0.06, 2000, 600, 4000, 0.6)
+                    out[i0:i0 + len(st)] += st[: n - i0]
     elif name == "gate" and shot.p[1] <= 0.05:
         out += bell(rng, 65.4, max(dur, 0.5))[:n] * 0.3     # 還立著的牌坊：一聲低沉的鐘
     elif name == "gate":
@@ -534,6 +543,48 @@ def insert_sound(name, dur, shot, tl, rng):
             chirp = (np.sin(2 * np.pi * 4600 * np.arange(int(0.12 * SR)) / SR) * (np.sin(2 * np.pi * 30 * np.arange(int(0.12 * SR)) / SR) > 0)).astype(np.float32)
             out[c0:c0 + len(chirp)] += chirp[: n - c0] * 0.02
         out += crackle(rng, dur, 30, 3000, 9000, 0.08)
+    elif name == "petition":
+        # 毛筆在紙上：細的沙沙聲，一筆一頓
+        pen = np.clip(np.sin(2 * np.pi * 2.3 * t), 0, 1) ** 2
+        out += filt(white(rng, n), "bandpass", [1500, 5000]) * pen * 0.05
+        out += filt(pink(rng, n), "bandpass", [150, 600]) * 0.015
+    elif name == "leaflet":
+        p0, p1 = shot.p
+        if p1 <= 0.4:
+            out += crackle(rng, dur, 140, 2000, 9000, 0.3)                 # 紙在風裡
+            for k in range(int(dur / 0.62)):                               # 帶鞋釘的靴子走近
+                i0 = int((0.3 + k * 0.62) * SR)
+                th = thud(rng, 75, 45, 0.25, 0.6, 0.6) * 0.3 * (k + 1) / 3
+                out[i0:i0 + len(th)] += th[: max(0, n - i0)]
+        elif p1 <= 0.6:
+            out += swish(rng, dur, 200, 900, 0.8) * 0.5                   # 影子壓下來
+        else:
+            # 落下：悶響與泥；然後只剩極輕的風
+            th = thud(rng, 62, 30, min(1.0, dur), 1.2, 0.9)
+            out[: len(th)] += th[:n] * 1.2
+            m = min(n, int(0.5 * SR))
+            out[:m] += (filt(white(rng, m), "lowpass", 900) * env_ad(m, 0.002, 0.12) *
+                        (1 + np.sin(2 * np.pi * 38 * np.arange(m) / SR)) * 0.6)
+            out += filt(white(rng, n), "bandpass", [150, 700]) * 0.02
+    elif name == "tou":
+        # 字草的世界：風；根往下的細碎；碰到墨之後的脈搏；靴落下、一筆斷了；或地火
+        tau = shot.p[0] * 13.0 + (shot.p[1] - shot.p[0]) * 13.0 * t / max(dur, 1e-3)
+        out += filt(white(rng, n), "bandpass", [150, 900]) * 0.04
+        out += crackle(rng, dur, 12, 150, 1500, 0.4)
+        for beat_t in np.arange(6.0, 13.0, 1.05):
+            i0 = int(np.searchsorted(tau, beat_t))
+            if 0 < i0 < n - 1:
+                hb = thud(rng, 48, 38, 0.45, 1.0, 0.0) * 0.4
+                out[i0:i0 + len(hb)] += hb[: n - i0]
+        i0 = int(np.searchsorted(tau, 8.4))
+        if 0 < i0 < n - 1:
+            th = thud(rng, 58, 28, 1.3, 1.3, 1.0)
+            out[i0:i0 + len(th)] += th[: n - i0] * 1.1
+            kk = knock(rng, 2400, 0.08, 0.4) * 0.6
+            out[i0:i0 + len(kk)] += kk[: n - i0]
+        if kw.get("burn"):
+            out += filt(brown(rng, n), "lowpass", 200) * 1.2 * np.clip(t / max(dur, 1e-3) * 2, 0, 1)
+            out += crackle(rng, dur, 260, 300, 6000, 0.8)
     f = min(int(0.004 * SR), n // 2)
     out[:f] *= np.linspace(0, 1, f)
     out[-f:] *= np.linspace(1, 0, f)
@@ -560,7 +611,8 @@ def apply_edit(mix, edit, rng):
             # 切到另一個世界：主聲軌壓低，意象自己的聲音浮上來
             L = min(i1, n) - i0
             if L > 0:
-                deep = {"bars": 0.12, "lamp_window": 0.3, "iron_house": 0.35, "mouth": 0.4}
+                deep = {"bars": 0.12, "lamp_window": 0.3, "iron_house": 0.35, "mouth": 0.4, "tou": 0.2,
+                        "leaflet": 0.3, "petition": 0.35}
                 if s.insert == "crowd" and s.kw.get("variant") == "empty":
                     deep_k = 0.1
                 else:

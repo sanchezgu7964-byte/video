@@ -519,6 +519,7 @@ def leaflet(b, p, t, **kw):
 # ── 渲染 ───────────────────────────────────────────────────
 class Plates:
     def __init__(self, seed, W=W, H=H):
+        from . import plates2  # noqa: F401  其餘的版在這裡登記
         self.block = Block(W, H)
         self.press = Print(W, H, seed)
 

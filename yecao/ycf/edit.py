@@ -152,15 +152,15 @@ class Edit:
                 n_st += 1
             else:
                 n_bl += 1
-            # 每隔一下：踐踏切到行進的靴子，刪刈切到看客
-            if e["kind"] == "stomp" and n_st % 2 == 0:
+            # 每隔三下：踐踏切到行進的靴子，刪刈切到看客（不再每一下都切走，讓田野自己被看清楚）
+            if e["kind"] == "stomp" and n_st % 4 == 2:
                 d = 0.12 if dense else 0.3
                 out.append(Shot(t0=e["t"] - d, kind="insert", insert="boots", p=(0.4, 0.5), tick=True,
                                 kw={"step": None}, label="靴子"))
                 out.append(Shot(t0=e["t"] + (1 / 30 if dense else 0.05), view=(2.4, e["xc"], 700), label="被踩扁的字"))
                 out.append(Shot(t0=e["t"] + (0.25 if dense else 0.4), view=WIDE, label="田野"))
                 continue
-            if e["kind"] == "blade" and n_bl % 2 == 0:
+            if e["kind"] == "blade" and n_bl % 4 == 2:
                 d = 0.1 if dense else 0.25
                 out.append(Shot(t0=e["t"] + 0.12, kind="insert", insert="onlookers", p=(0.5, 0.6 + 0.1 * dense),
                                 tick=True, label="看客"))
@@ -225,8 +225,9 @@ class Edit:
                 half = self.tl.period / 2
                 out.append(Shot(t0=t, view=(1.9, *ca), tick=True, label="一側的輪廓"))
                 out.append(Shot(t0=t + half, view=(1.9, *cb), tick=True, label="另一側的輪廓"))
-            else:
-                k = i % len(views)
+            elif i % 2 == 0:
+                # 隔一拍才換一次取景：輪廓出現的那一拍之外，給畫面停留
+                k = (i // 2) % len(views)
                 out.append(Shot(t0=t, view=views[k], tick=True, label=labels[k]))
         return out
 
@@ -255,10 +256,11 @@ class Edit:
         # 最後兩秒：一格一張，把前面全部的畫面過一遍
         t = tail
         fr = 1 / 30
-        images = [("iron_house", 0.9, {}), ("mouth", 1.0, {}), ("candle", 0.4, {}), ("grass_crack", 0.8, {}),
-                  ("roots_bones", 0.9, {}), ("boots", 0.5, {}), ("onlookers", 0.8, {}),
-                  ("crowd", 0.5, {"variant": "formation"}), ("crowd", 0.5, {"variant": "surge"}), ("gate", 0.6, {}),
-                  ("crowd", 0.5, {"variant": "empty"}), ("bars", 0.5, {})]
+        images = [("iron_house", 0.9, {}), ("petition", 0.8, {}), ("mouth", 1.0, {}), ("candle", 0.4, {}),
+                  ("tou", 0.5, {}), ("grass_crack", 0.8, {}), ("roots_bones", 0.9, {}), ("leaflet", 0.9, {}),
+                  ("boots", 0.5, {}), ("onlookers", 0.8, {}), ("crowd", 0.5, {"variant": "surge"}),
+                  ("crowd", 0.5, {"variant": "formation"}), ("gate", 0.6, {}), ("crowd", 0.5, {"variant": "empty"}),
+                  ("bars", 0.5, {})]
         m = 0
         while t < b["end"] - 1e-3:
             if r % 3 == 2 and m < len(images):

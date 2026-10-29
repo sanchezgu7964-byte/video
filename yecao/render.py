@@ -78,14 +78,17 @@ class Film:
         if shot.kind == "insert":
             if self._inserts is None:
                 from ycf.inserts import Inserts
-                self._inserts = Inserts(self.tl.seed)
+                self._inserts = Inserts(self.tl.seed, self.tl)
             kw = dict(shot.kw)
             if kw.get("beat") == "sync":
                 kw["beat"] = self.tl.beat_phase(t)[1]
             if "step" in kw and kw["step"] is None:
                 # 靴子落地的那一下對齊剪接點的拍
                 kw["step"] = 0.5 + (t - shot.t1) / (2 * self.tl.period)
-            return self._inserts.render(shot.insert, shot.insert_p(t), t, f, **kw)
+            if kw.get("burn") == "ramp":
+                kw["burn"] = (t - shot.t0) / max(shot.t1 - shot.t0, 1e-6)
+            v = shot.view_at(t)
+            return self._inserts.render(shot.insert, shot.insert_p(t), t, f, view=(v.z, v.cx, v.cy), **kw)
         if shot.kind == "flash":
             rec = self.recall(shot.src)
             if shot.overlay:
@@ -105,6 +108,10 @@ class Film:
         k = sc.subtitle_backing(t) if sc is not None and hasattr(sc, "subtitle_backing") else 0.0
         if shot is not None and shot.kind in ("black", "white", "flash", "insert") and not shot.overlay:
             k = 0.0
+        if shot is not None and shot.kind == "insert" and self.subs.visible(t):
+            # 意象上的字幕：在暗的版上壓一道暗帶，亮的紙上改用墨色（見下）
+            band0 = img[900:1040:4, 300:1620:4].mean()
+            k = 0.9 if band0 <= 0.45 else 0.0
         if k > 0:
             img *= 1 - 0.75 * k * self.backing
         self.sub_layer.clear()
@@ -115,6 +122,9 @@ class Film:
         else:
             self.subs.draw(self.sub_layer, t)
         over(img, self.sub_layer.rgba())
+        if shot is not None and shot.kind == "insert" and shot.insert != "tou":
+            # 木刻：黑白的拓印，不加暈光、暗角與顆粒
+            return np.clip(img * 255 + 0.5, 0, 255).astype(np.uint8)
         return self.fin(img, f)
 
 

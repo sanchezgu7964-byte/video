@@ -112,6 +112,11 @@ class LeafletGrass:
 
     def advance(self, t):
         dt = 1 / self.fps
+        if t < self._sim_t - 1e-9:                      # 倒回去：從頭重跑（模擬很便宜）
+            p = self.plant
+            p.theta = p.omega = p.sv = 0.0
+            p.squash = 1.0
+            self._sim_t = 0.0
         while self._sim_t + dt <= t + 1e-9:
             self._sim_t += dt
             self._step(self._sim_t, dt)
@@ -205,7 +210,8 @@ class LeafletGrass:
         dy = (1 - rise) * p.h * 1.05
         return [q + (0, dy) for q in polys], broken
 
-    def render(self, frame):
+    def render(self, frame, burn=0.0):
+        """burn 0..1：地火從底下燒上來（第 7 段），字草變成炭紅、發光、化成灰。"""
         t = frame / self.fps
         self.advance(t)
         pal = self.pal
@@ -260,9 +266,14 @@ class LeafletGrass:
             root = mix(base * 0.36, pal["blood"] * 1.1, 0.8 * tint)
             midc = mix(base * 0.8, pal["blood"] * 1.3, 0.3 * tint)
             tip = base * 1.1
+            if burn > 0:
+                hot = ease(ramp(burn, 0.0, 0.5))
+                root, midc, tip = (mix(c_, pal["lava"] * 1.2, hot) for c_ in (root, midc, tip * 0.6))
+                tip = mix(tip, pal["ember"], hot * 0.6)
             r0 = np.array([p.x, HZ])
             r1 = r0 - (0, p.h * p.squash)
-            fill_polys_grad(ctx, polys, r0, r1, [(0.0, root, 1.0), (0.45, midc, 1.0), (1.0, tip, 1.0)])
+            al = 1 - ease(ramp(burn, 0.55, 1.0))
+            fill_polys_grad(ctx, polys, r0, r1, [(0.0, root, al), (0.45, midc, al), (1.0, tip, al)])
         for q in broken:
             fill_polys(ctx, [q], pal["grass"] * 0.7, 1.0)
         # 地平線的亮邊
@@ -295,6 +306,23 @@ class LeafletGrass:
                             HZ - 4 + np.sin(ang) * sp * 0.35 * (1 - np.exp(-tau * 2.5)) + 40 * tau * tau], 1)
             splat(buf, pos, np.array([0.5, 0.42, 0.33], np.float32), rng.uniform(0.2, 0.9, n) * np.exp(-tau * 1.3))
             img += bloom(buf, 2.5, down=2) * 1.4 + buf
+        if burn > 0:
+            from .gfx import splat
+            k = ease(ramp(burn, 0.0, 0.4))
+            yy = np.arange(H, dtype=np.float32)[:, None]
+            xx = np.arange(W, dtype=np.float32)[None, :]
+            heat = np.exp(-((yy - HZ) / 70) ** 2) * (0.7 + 0.3 * noise3(xx / 300.0, t * 0.8, 0.0, 5))
+            heat += np.exp(-(((xx - 960) / 260) ** 2 + ((yy - HZ + 120) / 200) ** 2)) * (1 - ease(ramp(burn, 0.6, 1.0)))
+            img += heat[..., None] * pal["lava"] * 0.55 * k
+            img += bloom(np.clip(img - 0.55, 0, None), 18) * 0.8 * k
+            rng = rand(7, 503, int(t * 30) // 3)
+            n = 500
+            u = (rng.random(n) + t * 0.6) % 1.0
+            pos = np.stack([960 + rng.normal(0, 160, n) + 40 * np.sin(u * 9 + rng.random(n) * 6),
+                            HZ - u * 700 * rng.uniform(0.5, 1.0, n)], 1)
+            buf = np.zeros_like(img)
+            splat(buf, pos, np.array([1.0, 0.55, 0.2], np.float32), (1 - u) * rng.uniform(0.3, 1.0, n) * k)
+            img += buf + bloom(buf, 3, down=2) * 1.5
         self.motes.draw(img, t, 0.55, wind=0.7)
         if self.STOMP <= t < self.STOMP + 0.3:
             amp = 9 * (1 - (t - self.STOMP) / 0.3)
