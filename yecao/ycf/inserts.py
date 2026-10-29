@@ -372,7 +372,7 @@ def gate(pl, p, t, rng, **kw):
     pieces.append(([roof(560, 1360, 520, 46)], 0.04, 0.4, 1))
     pieces.append(([roof(700, 1220, 170, 70)], 0.03, 0.22, 1))
     plaque = rect(820, 360, 1100, 500)
-    pieces.append(([plaque], 0.1, 0.34, -1))
+    pieces.append(([plaque], 0.02, 0.34, -1))
     for k, (polys, tone, t0, d) in enumerate(pieces):
         tau = max(0.0, p - t0) * 2.6
         dy = 0.5 * 2200 * tau * tau
@@ -388,7 +388,7 @@ def gate(pl, p, t, rng, **kw):
                 g = serif.glyph(ch)
                 gp = [q * 100 + (850 + j * 120, 470) for q in g.contours]
                 gp = [rotate(q, ang, cx, cy) + (d * 120 * tau, dy) for q in gp]
-                pl.fill(gp, 0.9, False)
+                pl.fill(gp, 1.0, None)
     # 裂紋，然後塵土
     if p < 0.6:
         for px in (520, 800, 1120, 1400):
@@ -411,7 +411,7 @@ def calendar(pl, p, t, rng, year=0, **kw):
     """日曆被撕下：一九一一……一九二七。"""
     years = ["一九一一", "一九一三", "一九一五", "一九一七", "一九一九", "一九二六", "一九二七"]
     serif = fonts.face("fonts/serif_regular")
-    pl.begin(0.45, 0.35)
+    pl.begin(0.45, 0.35, flat=True)
 
     def page(label, poly_xform, tone=0.94):
         base = rect(700, 180, 1220, 900)
@@ -420,7 +420,7 @@ def calendar(pl, p, t, rng, year=0, **kw):
         for j, ch in enumerate(label):
             g = serif.glyph(ch)
             gp = [poly_xform(q * 150 + (885, 340 + j * 150)) for q in g.contours]
-            pl.fill(gp, 0.04, False)
+            pl.fill(gp, 0.0, None)
     nxt = years[min(year + 1, len(years) - 1)]
     page(nxt, lambda q: q)
     k = ease_in(ramp(p, 0.15, 1.0), 1.6)
@@ -431,7 +431,7 @@ def calendar(pl, p, t, rng, year=0, **kw):
 @insert("bars")
 def bars(pl, p, t, rng, **kw):
     """牢房的窗：鐵條、斜進來的光，什麼都不動。"""
-    pl.begin(0.08)
+    pl.begin(0.08, flat=True)
     win = rect(1180, 180, 1520, 520)
     pl.fill([win], 0.97, False)
     beam = np.array([[1180, 180], [1520, 180], [1100, 1080], [380, 1080]], np.float32)
@@ -446,7 +446,7 @@ def bars(pl, p, t, rng, **kw):
 def lamp_window(pl, p, t, rng, **kw):
     """夜裡白雲樓上的一扇窗：燈下有人在寫。"""
     r = rand(7, 75, 1)
-    pl.begin(0.05, 0.1)
+    pl.begin(0.05, 0.1, flat=True)
     pl.circle(300, 180, 70, 0.92, False)
     pl.fill([rect(420, 260, 1500, H)], 0.16, True)
     pl.fill([np.array([[380, 270], [960, 120], [1540, 270]])], 0.1, True)
@@ -477,4 +477,4 @@ class Inserts:
         rng = rand(self.seed, 80, frame)
         REG[name](self.plate, float(np.clip(p, 0, 1)), t, rng, **kw)
         tone, sel, red = self.plate.arrays()
-        return self.cut(tone, sel, red, jitter=frame)
+        return self.cut(tone, sel, red, jitter=frame, flat=self.plate.flat)
