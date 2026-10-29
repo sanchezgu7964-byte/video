@@ -1,0 +1,98 @@
+# 試片：四個關鍵場景（鐵屋、看客、街頭標語、傳單與字草），確認方向用，不是全片。
+# 每個鏡頭：plate = 刻版名稱（ycf/plates.py）、p = 播出這張版自己的哪一段進度、
+# view / to = 取景的起訖（放大倍數, 中心 x, 中心 y），dur = 秒。
+# kind = "black" 是黑；vignette = 字草世界的一段（ycf/vignettes.py），tau = 播出的時間區段。
+# 原則：重要的人、物、動作先停留，讓觀眾看清楚，再剪。
+
+[[shot]]
+plate = "iron_house"
+dur = 4.2
+p = [0.0, 0.12]
+view = [1.0, 960, 540]
+to = [1.06, 960, 600]
+label = "鐵屋：天花板壓在頭頂，人挨著人坐著睡"
+
+[[shot]]
+plate = "iron_house"
+dur = 2.6
+p = [0.24, 0.42]
+view = [3.1, 1215, 670]
+to = [3.3, 1220, 672]
+label = "中間那一個，睜開了眼"
+
+[[shot]]
+plate = "iron_house"
+dur = 3.2
+p = [0.5, 1.0]
+view = [1.12, 1000, 600]
+to = [1.2, 1050, 560]
+label = "慢慢抬起頭；其他人還睡著"
+
+[[shot]]
+kind = "black"
+dur = 0.5
+
+[[shot]]
+plate = "onlookers"
+dur = 4.6
+p = [0.0, 0.55]
+view = [1.0, 960, 540]
+to = [1.08, 1000, 540]
+label = "看客：幻燈片換了一張，所有的頸往前伸"
+
+[[shot]]
+plate = "onlookers"
+dur = 2.6
+p = [0.55, 0.85]
+view = [1.9, 1330, 700]
+to = [2.0, 1350, 690]
+label = "「萬歲！」——麻木的臉"
+
+[[shot]]
+plate = "banner"
+dur = 4.4
+p = [0.0, 0.5]
+view = [1.0, 960, 540]
+to = [1.05, 960, 520]
+label = "一九一九年五月四日：白布橫幅，有人領喊"
+
+[[shot]]
+plate = "banner"
+dur = 2.8
+p = [0.5, 0.8]
+view = [1.75, 620, 310]
+to = [1.75, 1300, 300]
+label = "外爭主權　內除國賊（搖過布上的字）"
+
+[[shot]]
+plate = "leaflet"
+dur = 3.2
+p = [0.0, 0.3]
+view = [1.0, 960, 540]
+to = [1.25, 880, 600]
+label = "《北京學界全體宣言》掉在泥地上"
+
+[[shot]]
+plate = "leaflet"
+dur = 0.6
+p = [0.38, 0.56]
+view = [1.25, 880, 600]
+label = "靴的影子壓下來"
+
+[[shot]]
+kind = "black"
+dur = 0.3
+
+[[shot]]
+plate = "leaflet"
+dur = 3.4
+p = [0.9, 0.9]
+view = [1.28, 900, 500]
+to = [1.36, 870, 530]
+label = "帶鞋釘的泥印：只剩「中國的人民可以殺戮而不可」"
+
+[[shot]]
+vignette = "leaflet_grass"
+dur = 13.0
+tau = [0.0, 13.0]
+label = "同一張紙埋在土裡，缺了「頭」；一株「頭」長出來，根找到墨；靴又落下，斷了一筆，撐住"

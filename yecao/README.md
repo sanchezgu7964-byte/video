@@ -21,6 +21,9 @@
 | `ycf/inserts.py`、`ycf/woodcut.py` | 意象鏡頭：鐵屋子、張開的嘴、熄滅的燭、石縫的草、根與骨、靴、看客、人潮與方陣、坍塌的節烈牌坊、日曆、牢窗、白雲樓的燈；全部以黑白木刻版畫呈現 |
 | `ycf/sound.py` | 程序生成的聲音設計 |
 | `render.py` | 渲染入口 |
+| `DIRECTION.md` | 下一版的方向：歷史的具體感、木刻的造型、「頭」這一株字草（試片階段） |
+| `ycf/carve.py`、`ycf/figures.py`、`ycf/plates.py` | 新的刻版：一刀一刀造型的木刻、側臉與身體、四張代表性的版（鐵屋、看客、街頭標語、傳單） |
+| `ycf/vignettes.py`、`ycf/voice.py`、`ycf/reel.py`、`config/reel.toml`、`test_reel.py` | 試片：字草世界的一段、人聲合成、試片的剪輯與聲音 |
 
 ## 剪輯
 
@@ -71,12 +74,14 @@
 ## 使用
 
 ```bash
-tools/fetch_fonts.sh                            # 第一次：取得字體
+tools/fetch_fonts.sh                            # 第一次：取得字體（含楷書與粗宋）
 python3 render.py --still 66.5 123.9            # 單張檢查 → out/still_*.png
 python3 render.py --sound                       # 只生成聲音 → out/sound.wav
 python3 render.py --range 61.5:71.5 --name s4   # 片段（含聲音）→ out/s4.mp4
 python3 render.py --full                        # 全片 → out/yecao_tici.mp4
 python3 make_storyboard.py                      # 依剪輯重新產生 STORYBOARD.md
+python3 test_reel.py --keyframes                # 試片的關鍵畫面（印在紙上／純黑白）→ out/reel/
+python3 test_reel.py                            # 試片（約 45 秒，含聲音）→ out/reel/yecao_reel.mp4
 ```
 
 多核心並行：影格範圍切成數段，各段由場景起點重播模擬（只模擬、不繪製）到段首再開始渲染，結果與單線程一致。
