@@ -1,6 +1,6 @@
 """試片：依 config/reel.toml 把刻版鏡頭與字草世界的一段剪在一起，並為它合成聲音。
 
-聲音的原則：具體的生活與公共空間——呼吸、幻燈機、講堂裡的「萬歲」與掌聲、街上的領喊與齊喊、
+聲音的原則：具體的生活與公共空間——呼吸、幻燈機、講堂裡的掌聲、
 布被風吹、腳步、紙、靴落下。每一種聲音有自己的距離（濾波、殘響）、停頓與遮蔽；
 鏡頭一切，聲音的空間也跟著切。
 """
@@ -9,7 +9,7 @@ import tomllib
 import numpy as np
 from scipy.signal import oaconvolve
 
-from . import config, voice
+from . import config
 from .config import ROOT
 from .gfx import ease, ramp
 from .noise import rand
@@ -68,7 +68,7 @@ class Reel:
     def sound(self):
         rng = rand(self.tl.seed, 700, 1)
         dur = self.duration
-        dry, wet, far = Bus(dur), Bus(dur), Bus(dur)
+        dry, wet = Bus(dur), Bus(dur)
         S = self.shots
 
         def seg(i0, i1):
@@ -139,73 +139,45 @@ class Reel:
             dry.add(knock(rng, f_, 0.12, 0.5) * 0.12, a + dt_, 1.0, 0.5)
             wet.add(knock(rng, f_, 0.12, 0.5) * 0.12, a + dt_, 0.5, 0.5)
         dry.add(swish(rng, 0.25, 1500, 3500, 0.6) * 0.08, a + 0.27, 1.0, 0.5)
-        # 低低的人聲（還沒喊出來）
-        murmur = np.zeros(int(3.2 * SR), np.float32)
-        for k in range(26):
-            ch = "外爭主權內除國賊"[k % 8]
-            s_ = voice.syllable(rng, ch, rng.uniform(0.18, 0.3), rng.uniform(100, 150), rng.uniform(0.9, 1.1), 0.4)
-            i = int(rng.uniform(0, 2.9) * SR)
-            murmur[i:i + len(s_)] += s_[: len(murmur) - i] * rng.uniform(0.2, 0.5)
-        murmur = filt(murmur, "lowpass", 1400) * 0.05
-        dry.add(gate(murmur, a + 0.4, b), a + 0.4, 1.0, 0.2)
-        wet.add(gate(murmur, a + 0.4, b), a + 0.4, 0.8, 0.2)
-        # 「萬歲！」他們都拍掌歡呼起來
+        # 拍掌：幻燈片換了之後，講堂裡響起來
         t_b = a + 3.3
-        cheer = voice.crowd(rng, ["ban", "zai"], 0.42, voices=18, f0=(115, 190), effort=1.3, jitter=0.04)
-        cheer = np.stack([filt(cheer[:, 0], "lowpass", 3500), filt(cheer[:, 1], "lowpass", 3500)], 1)
-        add2(dry, gate(cheer, t_b, b), t_b, 0.32)
-        add2(wet, gate(cheer, t_b, b), t_b, 0.45)
         m = int((b - t_b - 0.3) * SR)
         clap = crackle(rng, m / SR, curve([(0, 0), (0.15, 520), (1.5, 420), (m / SR, 120)], m), 700, 6500, 1.0)
         dry.add(gate(clap, t_b + 0.3, b), t_b + 0.3, 1.1, 0.1)
         wet.add(gate(clap, t_b + 0.3, b), t_b + 0.3, 0.9, 0.1)
 
-        # ── 街頭：一個人領喊，一群人跟著喊 ──
+        # ── 街頭：風、布、腳步 ──
         a, b = seg(6, 7)
         n = int((b - a) * SR)
         tt = np.arange(n) / SR
         wind = filt(white(rng, n), "bandpass", [200, 1800]) * (0.5 + 0.5 * np.sin(2 * np.pi * 0.23 * tt) ** 2) * 0.03
-        dry.add(gate(wind, a, b), a, 1.0, -0.2)
+        dry.add(gate(wind, a, b), a, 2.5, -0.2)
+        wet.add(gate(wind, a, b), a, 1.0, -0.2)
         # 布被風吹：拍打的節奏跟著布上的波
         flap_env = np.clip(np.sin(2 * np.pi * 1.25 * tt) * 1.8 - 0.6, 0, 1) ** 2
         flap = filt(white(rng, n), "bandpass", [300, 2600]) * flap_env * 0.09
-        dry.add(gate(flap, a, b), a, 1.0, 0.0)
+        dry.add(gate(flap, a, b), a, 4.0, 0.0)
+        wet.add(gate(flap, a, b), a, 1.2, 0.0)
         # 腳步：很多人，不齊
-        for k in range(int((b - a) * 7)):
+        for k in range(int((b - a) * 12)):
             t0 = a + rng.uniform(0, b - a)
             st = thud(rng, 90, 60, 0.12, 0.3, 0.8) * 0.12
             st[: int(0.08 * SR)] += crackle(rng, 0.08, 400, 1200, 5000, 0.05)
-            dry.add(gate(st, t0, b), t0, rng.uniform(0.3, 0.8), rng.uniform(-0.8, 0.8))
-        lead_a = voice.phrase(rng, "外爭主權", 0.36, 165, 1.0, 1.4)
-        lead_b = voice.phrase(rng, "內除國賊", 0.36, 168, 1.0, 1.4)
-        crowd_a = voice.crowd(rng, "外爭主權", 0.36, voices=22)
-        crowd_b = voice.crowd(rng, "內除國賊", 0.36, voices=22)
-        plan = [(a + 0.3, lead_a, None), (a + 1.9, None, crowd_a), (a + 3.6, lead_b, None), (a + 5.2, None, crowd_b)]
-        for t0, ld, cr in plan:
-            if ld is not None:
-                x = filt(ld, "lowpass", 4500)
-                dry.add(gate(x, t0, b), t0, 0.55, -0.35)
-                wet.add(gate(x, t0, b), t0, 0.35, -0.35)
-            if cr is not None:
-                x = np.stack([filt(cr[:, 0], "lowpass", 3200), filt(cr[:, 1], "lowpass", 3200)], 1)
-                add2(dry, gate(x, t0, b), t0, 0.62)
-                add2(wet, gate(x, t0, b), t0, 0.8)
-
-        # ── 傳單：喊聲退到遠處；紙；靴子走近，落下 ──
+            g_ = rng.uniform(0.8, 2.4)
+            dry.add(gate(st, t0, b), t0, g_, rng.uniform(-0.8, 0.8))
+            wet.add(gate(st, t0, b), t0, g_ * 0.4, rng.uniform(-0.8, 0.8))
+        # ── 傳單：紙；靴子走近，落下 ──
         a, b = seg(8, 11)
         n = int((b - a) * SR)
         tt = np.arange(n) / SR
-        for t0, cr in ((a + 0.2, crowd_a), (a + 1.9, crowd_b), (S[11]["t0"] + 0.9, crowd_a)):
-            x = np.stack([filt(cr[:, 0], "lowpass", 1100), filt(cr[:, 1], "lowpass", 1100)], 1)
-            add2(far, gate(x, t0, b), t0, 0.22 if t0 < S[10]["t0"] else 0.07)
         rd = S[9]["t1"] - a
         rt = np.arange(int(rd * SR)) / SR
         rustle = crackle(rng, rd, 60 + 120 * (0.5 + 0.5 * np.sin(2 * np.pi * 0.7 * rt)), 2000, 9000, 0.25)
-        dry.add(gate(rustle, a, S[9]["t1"]), a, 1.0, 0.2)
+        dry.add(gate(rustle, a, S[9]["t1"]), a, 3.0, 0.2)
         # 帶鞋釘的靴子：一步一步走近
         steps = np.arange(a + 1.3, S[9]["t1"], 0.62)
         for k, t0 in enumerate(steps):
-            g = 0.3 + 0.7 * (k + 1) / len(steps)
+            g = (0.3 + 0.7 * (k + 1) / len(steps)) * 2.5
             dry.add(thud(rng, 75, 45, 0.25, 0.6, 0.6) * 0.3, t0, g, -0.3 + 0.15 * k)
             dry.add(knock(rng, 3400, 0.05, 0.3) * 0.12, t0 + 0.01, g, -0.3 + 0.15 * k)
         # 影子壓下來：一陣氣；落下：悶響、泥、然後什麼都沒有
@@ -254,14 +226,13 @@ class Reel:
         dust = crackle(rng, 2.0, curve([(0, 200), (2.0, 0)], int(2.0 * SR)), 1500, 7000, 0.12)
         dry.add(dust, t_s + 0.05, 1.0, 0.0)
 
-        # ── 混音：近的乾聲、殘響、遠處（更暗、更多殘響） ──
+        # ── 混音：近的乾聲與殘響 ──
         ir = reverb_ir(rng, 1.6)
-        ir_far = reverb_ir(rng, 3.2, damp=2200)
 
         def conv(st, k):
             return np.stack([oaconvolve(st[:, 0], k[:, 0])[: len(st)], oaconvolve(st[:, 1], k[:, 1])[: len(st)]], 1)
 
-        mix = dry.stereo() + conv(wet.stereo(), ir) * 0.8 + conv(far.stereo(), ir_far) * 1.2
+        mix = dry.stereo() + conv(wet.stereo(), ir) * 0.8
         # 黑：真的沒有聲音（連殘響也切掉）
         t = np.arange(len(mix)) / SR
         g = np.ones(len(mix), np.float32)

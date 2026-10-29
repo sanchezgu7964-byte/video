@@ -23,7 +23,7 @@
 | `render.py` | 渲染入口 |
 | `DIRECTION.md` | 下一版的方向：歷史的具體感、木刻的造型、「頭」這一株字草（試片階段） |
 | `ycf/carve.py`、`ycf/figures.py`、`ycf/plates.py` | 新的刻版：一刀一刀造型的木刻、側臉與身體、四張代表性的版（鐵屋、看客、街頭標語、傳單） |
-| `ycf/vignettes.py`、`ycf/voice.py`、`ycf/reel.py`、`config/reel.toml`、`test_reel.py` | 試片：字草世界的一段、人聲合成、試片的剪輯與聲音 |
+| `ycf/vignettes.py`、`ycf/reel.py`、`config/reel.toml`、`test_reel.py` | 試片：字草世界的一段、試片的剪輯與聲音（不用人聲） |
 
 ## 剪輯
 
