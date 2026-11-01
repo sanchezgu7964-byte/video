@@ -28,6 +28,11 @@ class Inserts:
                 self._tou = LeafletGrass(self.tl)
             tau = p * TOU_DUR
             return self._tou.render(int(round(tau * self._tou.fps)), burn=float(kw.get("burn", 0.0)))
+        if name == "cover":
+            if getattr(self, "_cover", None) is None:
+                from .cover import Cover
+                self._cover = Cover(seed=7)
+            return self._cover.render(t - float(kw.get("t0", t)))
         if name == "crowd":
             name = ALIAS[("crowd", kw.pop("variant", "surge"))]
         if "view" in kw:

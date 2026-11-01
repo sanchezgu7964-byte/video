@@ -13,6 +13,7 @@
 #   crowd（surge＝1919 年 5 月 4 日的白布橫幅／formation＝被收編的方陣／empty＝散場後的街）
 #   gate 坍塌的節烈牌坊／calendar 撕下的日曆（每頁一個日子）／bars 牢窗／lamp_window 白雲樓上燈下寫字的人
 #   petition 1895 年聯名的呈文／leaflet 被踩進泥裡的《北京學界全體宣言》
+#   cover 最後一幕：旋轉的分鏡裡畫出《野草》的封面（ycf/cover.py）
 #   tou 字草世界裡的「頭」：從埋著那張傳單的土裡長出來（p＝它自己的 13 秒；burn = "ramp" 讓地火燒上來）
 
 # 閃回用的畫面：渲染前先在這些時刻各拍一張全景（out/cache/recall_NN.png）
@@ -585,4 +586,7 @@ tick = false
 label = "一九二七年四月二十六日，白雲樓上"
 [[shot]]
 at = 199.8
-label = "被大地收下；最後一株芽"
+insert = "cover"
+t0 = 199.8
+tick = false
+label = "在旋轉的分鏡裡，一筆一筆畫出《野草》的封面：地平線、野草、綠地、河岸、書名；最後拉遠、轉正，停住"

@@ -1,6 +1,6 @@
 # 《野草》題辭 — 代碼生成短片
 
-約 3 分 28 秒。畫面與聲音全部由程式生成：Python 逐影格渲染（pycairo 向量 + numpy 粒子／噪聲場），聲音以 numpy／scipy 合成，ffmpeg 合成影音。不使用任何外部影像或音檔，只用 Noto Serif TC／Noto Sans TC 字體。固定隨機種子，每次輸出一致。
+約 3 分 36 秒。畫面與聲音全部由程式生成：Python 逐影格渲染（pycairo 向量 + numpy 粒子／噪聲場），聲音以 numpy／scipy 合成，ffmpeg 合成影音。不使用任何外部影像或音檔，只用 Noto Serif TC／Noto Sans TC 字體。固定隨機種子，每次輸出一致。
 
 ## 目錄
 
@@ -19,6 +19,7 @@
 | `ycf/atmos.py` | 天空雲霧、土壤剖面（地層、碎石、埋著的殘筆）、空氣中的塵、光束 |
 | `ycf/leaf.py`、`ycf/tree.py`、`ycf/clump.py` | 葉脈網路、L-system 喬木、「一叢野草」 |
 | `ycf/carve.py`、`ycf/figures.py`、`ycf/plates.py`、`ycf/plates2.py`、`ycf/inserts.py` | 意象鏡頭：一刀一刀造型的黑白木刻（刻版、側臉與身體、十六張版），以及剪輯層的接口 |
+| `ycf/cover.py` | 最後一幕：旋轉的分鏡裡畫出《野草》的封面 |
 | `ycf/vignettes.py` | 字草世界裡的「頭」：從埋著《宣言》的土裡長出來、被踩、斷了一筆、撐住、被地火燒 |
 | `ycf/sound.py` | 程序生成的聲音設計 |
 | `render.py` | 渲染入口 |

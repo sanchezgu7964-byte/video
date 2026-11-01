@@ -585,6 +585,35 @@ def insert_sound(name, dur, shot, tl, rng):
         if kw.get("burn"):
             out += filt(brown(rng, n), "lowpass", 200) * 1.2 * np.clip(t / max(dur, 1e-3) * 2, 0, 1)
             out += crackle(rng, dur, 260, 300, 6000, 0.8)
+    elif name == "cover":
+        # 畫封面：細筆的沙沙（線、字）、毛筆一下一下（草葉、書名）、大刷子（綠地、河岸）；分鏡切換時一聲輕響
+        tau0 = shot.t0 - float(kw.get("t0", shot.t0))
+
+        def at(x, t_):
+            i0 = int((t_ - tau0) * SR)
+            if 0 <= i0 < n:
+                out[i0:i0 + len(x)] += x[: n - i0]
+
+        def scratch(a_, b_, amp):
+            m = int((b_ - a_) * SR)
+            x = filt(white(rng, m), "bandpass", [2200, 6500]) * (0.6 + 0.4 * np.sin(2 * np.pi * 7 * np.arange(m) / SR))
+            at(x * np.sin(np.pi * np.linspace(0, 1, m)) ** 0.5 * amp, a_)
+
+        scratch(0.3, 2.4, 0.05)
+        scratch(1.5, 2.6, 0.035)
+        for (t0_, t1_, k_) in ((2.75, 4.9, 12), (4.1, 5.0, 5), (6.0, 7.1, 7)):
+            for j in range(k_):
+                at(swish(rng, 0.28, 900, 3200, 0.6) * 0.12, t0_ + (t1_ - t0_) * j / k_)
+        for (a_, b_) in ((5.1, 6.9), (7.3, 8.9)):
+            at(swish(rng, b_ - a_, 250, 1400, 0.9) * 0.22, a_)
+        scratch(8.4, 9.1, 0.04)
+        for j in range(14):
+            at(swish(rng, 0.2, 600, 2200, 0.7) * 0.14, 9.5 + 2.0 * j / 14)
+        scratch(11.4, 12.8, 0.03)
+        for k_, t_ in enumerate((12.4, 12.65, 7.0, 7.1)):
+            at(knock(rng, 2600 + 300 * k_, 0.05, 0.3) * 0.08, t_ + (0.8 if t_ > 12 else 0.2))
+        for t_ in (2.6, 5.0, 7.2, 9.2, 11.6):
+            at(knock(rng, 1800, 0.04, 0.3) * 0.1, t_)
     f = min(int(0.004 * SR), n // 2)
     out[:f] *= np.linspace(0, 1, f)
     out[-f:] *= np.linspace(1, 0, f)
@@ -612,7 +641,7 @@ def apply_edit(mix, edit, rng):
             L = min(i1, n) - i0
             if L > 0:
                 deep = {"bars": 0.12, "lamp_window": 0.3, "iron_house": 0.35, "mouth": 0.4, "tou": 0.2,
-                        "leaflet": 0.3, "petition": 0.35}
+                        "leaflet": 0.3, "petition": 0.35, "cover": 0.6}
                 if s.insert == "crowd" and s.kw.get("variant") == "empty":
                     deep_k = 0.1
                 else:
